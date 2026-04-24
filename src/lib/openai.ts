@@ -1,70 +1,62 @@
-import { AIModelSettings, Message } from '../types';
+import { AIModelSettings } from '../types';
 
-export async function fetchImageGeneration(
-  settings: AIModelSettings,
-  prompt: string
-): Promise<string> {
-  const { endpoint, apiKey, imageModel } = settings;
-  const baseUrl = endpoint.replace(/\/+$/, ''); // Remove trailing slashes
-  
-  const response = await fetch(`${baseUrl}/images/generations`, {
+interface SharedProviderStatus {
+  ok: boolean;
+  enabled: boolean;
+  message?: string;
+}
+
+async function apiRequest<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(path, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model: imageModel,
-      prompt,
-      n: 1,
-      size: '1024x1024',
-      response_format: 'b64_json',
-    }),
+    body: JSON.stringify(body),
   });
 
+  const payload = await response.json().catch(() => ({}));
+
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Image generation failed: ${response.statusText}`);
+    throw new Error(payload.error || payload.message || 'Request failed');
   }
 
-  const data = await response.json();
-  const b64 = data.data[0].b64_json;
-  return `data:image/png;base64,${b64}`;
+  return payload as T;
+}
+
+export async function unlockSharedProvider(password: string): Promise<SharedProviderStatus> {
+  return apiRequest<SharedProviderStatus>('/api/provider/unlock', { password });
+}
+
+export async function fetchImageGeneration(settings: AIModelSettings, prompt: string): Promise<string> {
+  const data = await apiRequest<{ image: string }>('/api/generate-image', {
+    settings,
+    prompt,
+  });
+
+  return data.image;
 }
 
 export async function* fetchChatCompletionStream(
   settings: AIModelSettings,
   systemPrompt: string,
-  messages: any[]
+  messages: any[],
 ) {
-  const { endpoint, apiKey, chatModel } = settings;
-  const baseUrl = endpoint.replace(/\/+$/, '');
-
-  const payload = {
-    model: chatModel,
-    stream: true,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      ...messages
-    ]
-  };
-
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const response = await fetch('/api/chat', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ settings, systemPrompt, messages }),
   });
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Chat failed: ${response.statusText}`);
+    throw new Error(err.error?.message || err.error || `Chat failed: ${response.statusText}`);
   }
 
   const reader = response.body?.getReader();
-  if (!reader) throw new Error("No response body");
+  if (!reader) throw new Error('No response body');
 
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
@@ -72,24 +64,24 @@ export async function* fetchChatCompletionStream(
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    
+
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
-    buffer = lines.pop() || ''; // keep the incomplete line in buffer
+    buffer = lines.pop() || '';
 
     for (const line of lines) {
       if (line.startsWith('data: ')) {
         const dataStr = line.slice(6).trim();
         if (dataStr === '[DONE]') return;
-        
+
         try {
           const data = JSON.parse(dataStr);
-          const content = data.choices[0]?.delta?.content;
+          const content = data.choices?.[0]?.delta?.content;
           if (content) {
-             yield content;
+            yield content;
           }
-        } catch (e) {
-          // Ignore invalid JSON from stream
+        } catch {
+          // ignore malformed stream chunks
         }
       }
     }

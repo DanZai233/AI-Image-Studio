@@ -1,27 +1,80 @@
+export type Locale = 'zh' | 'en';
+export type InputMode = 'chat' | 'image';
+export type VisualStyleKey =
+  | 'cinematic'
+  | 'editorial'
+  | 'anime'
+  | 'photography'
+  | 'conceptArt'
+  | 'watercolor'
+  | 'poster'
+  | 'product'
+  | 'interior'
+  | 'fashion';
+
 export interface AIModelSettings {
   apiKey: string;
   endpoint: string;
   chatModel: string;
   imageModel: string;
+  useSharedProvider: boolean;
+  sharedPassword: string;
+}
+
+export interface RuntimeConfig {
+  appName: string;
+  sharedProviderLabel: string;
+  sharedProviderDescription: string;
+  sharedProviderEnabled: boolean;
+  supportEmail: string;
 }
 
 export interface ImageAsset {
-  id: string; // e.g. "IMG_XYZ123"
-  name: string; // User-facing name, typically same as id
-  url: string; // Base64 data URL
+  id: string;
+  name: string;
+  url: string;
   source: 'upload' | 'generation';
   createdAt: number;
+  prompt?: string;
+}
+
+export interface PromptPreset {
+  id: string;
+  title: Record<Locale, string>;
+  description: Record<Locale, string>;
+  category: string;
+  prompt: Record<Locale, string>;
+  tags: string[];
+  recommendedNegativePrompt?: string;
+}
+
+export interface TagDefinition {
+  id: string;
+  label: Record<Locale, string>;
+  description: Record<Locale, string>;
+  value: string;
+  group: 'quality' | 'lighting' | 'composition' | 'style' | 'camera' | 'mood' | 'material';
 }
 
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
-  content: string; // text
-  mode: 'chat' | 'image'; // what mode this message was created in
-  imageAssets?: string[]; // IDs of referenced images
-  quotedMessageId?: string; // ID of message being replied to
+  content: string;
+  mode: InputMode;
+  imageAssets?: string[];
+  quotedMessageId?: string;
   timestamp: number;
   isError?: boolean;
+  metadata?: {
+    presetId?: string;
+    tags?: string[];
+  };
+}
+
+export interface PromptBuilderState {
+  selectedPresetId: string | null;
+  selectedTagIds: string[];
+  customSuffix: string;
 }
 
 export type AppState = {
@@ -29,5 +82,8 @@ export type AppState = {
   messages: Message[];
   assets: Record<string, ImageAsset>;
   quotedMessageId: string | null;
-  inputMode: 'chat' | 'image';
+  inputMode: InputMode;
+  locale: Locale;
+  runtimeConfig: RuntimeConfig;
+  promptBuilder: PromptBuilderState;
 };
