@@ -4,6 +4,7 @@ export const promptPresets: PromptPreset[] = [
   {
     id: 'dreamy-portrait',
     category: 'portrait',
+    featured: true,
     title: {
       zh: '氛围人像',
       en: 'Dreamy Portrait',
@@ -22,6 +23,7 @@ export const promptPresets: PromptPreset[] = [
   {
     id: 'cinematic-scene',
     category: 'cinematic',
+    featured: true,
     title: {
       zh: '电影场景',
       en: 'Cinematic Scene',
@@ -40,6 +42,7 @@ export const promptPresets: PromptPreset[] = [
   {
     id: 'anime-key-visual',
     category: 'illustration',
+    featured: true,
     title: {
       zh: '二次元主视觉',
       en: 'Anime Key Visual',
@@ -58,6 +61,7 @@ export const promptPresets: PromptPreset[] = [
   {
     id: 'product-editorial',
     category: 'product',
+    featured: false,
     title: {
       zh: '产品静物',
       en: 'Product Editorial',
@@ -76,6 +80,7 @@ export const promptPresets: PromptPreset[] = [
   {
     id: 'interior-poetry',
     category: 'space',
+    featured: true,
     title: {
       zh: '空间美学',
       en: 'Interior Poetry',
@@ -97,6 +102,7 @@ export const tagDefinitions: TagDefinition[] = [
   {
     id: 'quality-masterpiece',
     group: 'quality',
+    featured: true,
     label: { zh: '高完成度', en: 'Masterpiece' },
     description: { zh: '适合大多数高质量出图需求。', en: 'A strong baseline quality booster for most generations.' },
     value: 'masterpiece, best quality, ultra detailed',
@@ -104,6 +110,7 @@ export const tagDefinitions: TagDefinition[] = [
   {
     id: 'lighting-golden-hour',
     group: 'lighting',
+    featured: true,
     label: { zh: '黄金时刻', en: 'Golden Hour' },
     description: { zh: '温暖、柔和、浪漫的自然光。', en: 'Warm romantic natural light near sunset.' },
     value: 'golden hour lighting, warm rim light, soft glow',
@@ -111,6 +118,7 @@ export const tagDefinitions: TagDefinition[] = [
   {
     id: 'lighting-neon',
     group: 'lighting',
+    featured: true,
     label: { zh: '霓虹夜色', en: 'Neon Night' },
     description: { zh: '适合赛博、都市、夜景氛围。', en: 'Perfect for cyberpunk and urban nocturnal moods.' },
     value: 'neon lighting, magenta and cyan glow, night atmosphere',
@@ -118,6 +126,7 @@ export const tagDefinitions: TagDefinition[] = [
   {
     id: 'composition-closeup',
     group: 'composition',
+    featured: false,
     label: { zh: '近景特写', en: 'Close-Up' },
     description: { zh: '强化主体细节与情绪。', en: 'Emphasize detail and intimacy around the subject.' },
     value: 'close-up framing, intimate composition, focused subject',
@@ -125,6 +134,7 @@ export const tagDefinitions: TagDefinition[] = [
   {
     id: 'composition-wide',
     group: 'composition',
+    featured: true,
     label: { zh: '电影广角', en: 'Wide Frame' },
     description: { zh: '适合展示环境叙事。', en: 'Useful when environment storytelling matters.' },
     value: 'wide shot, environmental storytelling, cinematic framing',
@@ -132,6 +142,7 @@ export const tagDefinitions: TagDefinition[] = [
   {
     id: 'style-film',
     group: 'style',
+    featured: true,
     label: { zh: '胶片质感', en: 'Film Look' },
     description: { zh: '带有颗粒与电影调色。', en: 'Adds film grain and cinematic grading.' },
     value: 'film grain, cinematic color grading, analog texture',
@@ -139,6 +150,7 @@ export const tagDefinitions: TagDefinition[] = [
   {
     id: 'style-watercolor',
     group: 'style',
+    featured: false,
     label: { zh: '水彩笔触', en: 'Watercolor' },
     description: { zh: '适合柔和插画与艺术海报。', en: 'Soft painterly look for artistic illustrations.' },
     value: 'watercolor wash, painterly brushstrokes, delicate texture',
@@ -146,6 +158,7 @@ export const tagDefinitions: TagDefinition[] = [
   {
     id: 'camera-85mm',
     group: 'camera',
+    featured: false,
     label: { zh: '85mm 镜头', en: '85mm Lens' },
     description: { zh: '适合高级人像压缩感。', en: 'Classic flattering portrait compression.' },
     value: '85mm lens, portrait photography, shallow depth of field',
@@ -153,6 +166,7 @@ export const tagDefinitions: TagDefinition[] = [
   {
     id: 'camera-macro',
     group: 'camera',
+    featured: true,
     label: { zh: '微距细节', en: 'Macro Detail' },
     description: { zh: '适合珠宝、食物、植物等细节。', en: 'For jewelry, food, flora, and texture-rich close shots.' },
     value: 'macro photography, extreme detail, texture focus',
@@ -160,6 +174,7 @@ export const tagDefinitions: TagDefinition[] = [
   {
     id: 'mood-ethereal',
     group: 'mood',
+    featured: true,
     label: { zh: '空灵感', en: 'Ethereal' },
     description: { zh: '偏轻盈、诗意、梦境感。', en: 'Light, poetic, dreamlike atmosphere.' },
     value: 'ethereal mood, dreamy atmosphere, poetic composition',
@@ -167,6 +182,7 @@ export const tagDefinitions: TagDefinition[] = [
   {
     id: 'mood-mysterious',
     group: 'mood',
+    featured: false,
     label: { zh: '神秘感', en: 'Mysterious' },
     description: { zh: '适合悬疑、幻想、暗色调。', en: 'For mystery, fantasy, and darker narratives.' },
     value: 'mysterious mood, moody shadows, dramatic atmosphere',
@@ -174,6 +190,7 @@ export const tagDefinitions: TagDefinition[] = [
   {
     id: 'material-glass',
     group: 'material',
+    featured: true,
     label: { zh: '玻璃与折射', en: 'Glass Refraction' },
     description: { zh: '适合透明材质和高级静物。', en: 'Enhances transparency, reflection, and luxury surfaces.' },
     value: 'glass refraction, reflective surfaces, translucent material detail',

@@ -30,6 +30,8 @@ export interface RuntimeConfig {
   sharedProviderDescription: string;
   sharedProviderEnabled: boolean;
   supportEmail: string;
+  imageReferenceEnabled: boolean;
+  imageReferenceHint: string;
 }
 
 export interface ImageAsset {
@@ -39,6 +41,7 @@ export interface ImageAsset {
   source: 'upload' | 'generation';
   createdAt: number;
   prompt?: string;
+  workspaceId: string;
 }
 
 export interface PromptPreset {
@@ -70,10 +73,18 @@ export interface Message {
   quotedMessageId?: string;
   timestamp: number;
   isError?: boolean;
+  workspaceId: string;
   metadata?: {
     presetId?: string;
     tags?: string[];
   };
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface PromptBuilderState {
@@ -95,10 +106,13 @@ export type AppState = {
   settings: AIModelSettings;
   messages: Message[];
   assets: Record<string, ImageAsset>;
+  workspaces: Workspace[];
+  activeWorkspaceId: string;
   quotedMessageId: string | null;
   inputMode: InputMode;
   locale: Locale;
   runtimeConfig: RuntimeConfig;
   promptBuilder: PromptBuilderState;
   isMobileSidebarOpen: boolean;
+  lightboxAssetId: string | null;
 };

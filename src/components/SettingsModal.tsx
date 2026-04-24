@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { X, ShieldCheck, KeyRound, Globe2 } from 'lucide-react';
+import { X, ShieldCheck, KeyRound, Globe2, ImagePlus } from 'lucide-react';
 import { useAppStore } from '../lib/store';
 import { t } from '../lib/i18n';
 import { unlockSharedProvider } from '../lib/openai';
@@ -117,6 +117,16 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
             <div className="flex gap-2">
               <button onClick={() => dispatch({ type: 'SET_LOCALE', payload: 'zh' })} className={`rounded-full px-4 py-2 text-sm ${locale === 'zh' ? 'bg-white text-black' : 'bg-black/20 text-white/60'}`}>中文</button>
               <button onClick={() => dispatch({ type: 'SET_LOCALE', payload: 'en' })} className={`rounded-full px-4 py-2 text-sm ${locale === 'en' ? 'bg-white text-black' : 'bg-black/20 text-white/60'}`}>EN</button>
+            </div>
+
+            <div className="rounded-2xl border border-white/8 bg-black/15 p-4">
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-white/40 mb-2">
+                <ImagePlus className="w-4 h-4" />
+                {t(locale, 'referenceImageGeneration')}
+              </div>
+              <p className="text-sm text-white/58 leading-6">
+                {runtimeConfig.imageReferenceHint || t(locale, 'referenceImageHint')}
+              </p>
             </div>
 
             <div className="space-y-3 pt-3">

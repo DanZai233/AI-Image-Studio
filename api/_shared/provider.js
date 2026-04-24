@@ -79,5 +79,9 @@ export function getPublicRuntimeConfig() {
       'Use the site preset model without configuring a personal API key.',
     sharedProviderEnabled: shared.enabled,
     supportEmail: process.env.VITE_SUPPORT_EMAIL || '',
+    imageReferenceEnabled: true,
+    imageReferenceHint:
+      process.env.VITE_IMAGE_REFERENCE_HINT ||
+      'Reference images are forwarded when the upstream image model accepts multimodal prompt content; otherwise the app falls back to contextual text guidance.',
   };
 }

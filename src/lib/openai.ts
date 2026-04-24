@@ -1,4 +1,4 @@
-import { AIModelSettings } from '../types';
+import { AIModelSettings, ImageAsset } from '../types';
 
 interface SharedProviderStatus {
   ok: boolean;
@@ -28,10 +28,17 @@ export async function unlockSharedProvider(password: string): Promise<SharedProv
   return apiRequest<SharedProviderStatus>('/api/provider/unlock', { password });
 }
 
-export async function fetchImageGeneration(settings: AIModelSettings, prompt: string): Promise<string> {
+export async function fetchImageGeneration(
+  settings: AIModelSettings,
+  prompt: string,
+  referenceImages: ImageAsset[] = [],
+  fallbackContext = '',
+): Promise<string> {
   const data = await apiRequest<{ image: string }>('/api/generate-image', {
     settings,
     prompt,
+    referenceImages: referenceImages.map((asset) => ({ id: asset.id, url: asset.url, source: asset.source })),
+    fallbackContext,
   });
 
   return data.image;

@@ -8,26 +8,24 @@ export function MessageList() {
   const { state } = useAppStore();
   const locale = state.locale;
   const bottomRef = useRef<HTMLDivElement>(null);
+  const activeWorkspace = state.workspaces.find((workspace) => workspace.id === state.activeWorkspaceId) || state.workspaces[0];
+  const workspaceMessages = state.messages.filter((message) => message.workspaceId === state.activeWorkspaceId);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [state.messages]);
+  }, [workspaceMessages]);
 
-  if (state.messages.length === 0) {
+  if (workspaceMessages.length === 0) {
     return (
       <div className="flex-1 min-h-0 overflow-y-auto w-full max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-10">
         <div className="rounded-[36px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(216,180,254,0.15),transparent_35%),rgba(255,255,255,0.04)] p-8 md:p-12 shadow-[0_30px_120px_rgba(0,0,0,0.35)] backdrop-blur-2xl">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] uppercase tracking-[0.32em] text-white/45">
               <Sparkles className="w-4 h-4 text-fuchsia-200" />
-              {state.runtimeConfig.sharedProviderLabel}
+              {activeWorkspace?.name || state.runtimeConfig.sharedProviderLabel}
             </div>
-            <h1 className="mt-6 text-4xl md:text-6xl text-white font-light leading-tight tracking-[0.03em]">
-              {t(locale, 'heroTitle')}
-            </h1>
-            <p className="mt-5 text-base md:text-lg text-white/62 leading-8 max-w-2xl">
-              {t(locale, 'heroDesc')}
-            </p>
+            <h1 className="mt-6 text-4xl md:text-6xl text-white font-light leading-tight tracking-[0.03em]">{t(locale, 'heroTitle')}</h1>
+            <p className="mt-5 text-base md:text-lg text-white/62 leading-8 max-w-2xl">{t(locale, 'heroDesc')}</p>
           </div>
 
           <div className="mt-10 grid gap-4 md:grid-cols-3">
@@ -66,7 +64,7 @@ export function MessageList() {
   return (
     <div className="flex-1 min-h-0 overflow-y-auto w-full max-w-5xl mx-auto px-4 md:px-8 scroll-smooth">
       <div className="py-8 space-y-1">
-        {state.messages.map((message) => (
+        {workspaceMessages.map((message) => (
           <MessageItem key={message.id} message={message} />
         ))}
         <div ref={bottomRef} className="h-4" />

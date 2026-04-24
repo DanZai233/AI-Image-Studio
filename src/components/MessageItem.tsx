@@ -1,5 +1,5 @@
 import React from 'react';
-import { Reply, Download, Share2 } from 'lucide-react';
+import { Reply, Download, Share2, ZoomIn } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Message } from '../types';
 import { useAppStore } from '../lib/store';
@@ -12,7 +12,8 @@ export function MessageItem({ message }: { message: Message }) {
   const locale = state.locale;
 
   const assets = (message.imageAssets || []).map((id) => state.assets[id]).filter(Boolean);
-  const quotedMessage = message.quotedMessageId ? state.messages.find((m) => m.id === message.quotedMessageId) : null;
+  const workspaceMessages = state.messages.filter((item) => item.workspaceId === state.activeWorkspaceId);
+  const quotedMessage = message.quotedMessageId ? workspaceMessages.find((m) => m.id === message.quotedMessageId) : null;
 
   const handleDownload = (id: string, url: string) => {
     const a = document.createElement('a');
@@ -55,13 +56,20 @@ export function MessageItem({ message }: { message: Message }) {
           <div className="flex flex-wrap gap-3">
             {assets.map((asset) => (
               <div key={asset.id} className="relative group/asset rounded-[24px] overflow-hidden border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.3)] bg-black/50">
-                <img
-                  src={asset.url}
-                  alt={asset.id}
-                  className={cn('object-cover block', message.mode === 'image' && isAI ? 'w-full max-w-lg' : 'w-52 max-h-56')}
-                />
+                <button onClick={() => dispatch({ type: 'SET_LIGHTBOX_ASSET', payload: asset.id })} className="block">
+                  <img
+                    src={asset.url}
+                    alt={asset.id}
+                    className={cn('object-cover block', message.mode === 'image' && isAI ? 'w-full max-w-lg' : 'w-52 max-h-56')}
+                  />
+                </button>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent opacity-0 group-hover/asset:opacity-100 transition-opacity flex flex-col justify-between p-4">
-                  <div className="text-white/80 font-mono text-xs">@{asset.id}</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-white/80 font-mono text-xs">@{asset.id}</div>
+                    <button onClick={() => dispatch({ type: 'SET_LIGHTBOX_ASSET', payload: asset.id })} className="p-2 bg-white/15 hover:bg-white/30 backdrop-blur-md rounded-xl text-white transition-colors">
+                      <ZoomIn className="w-4 h-4" />
+                    </button>
+                  </div>
                   <div className="flex items-center gap-2 justify-end">
                     <button onClick={() => dispatch({ type: 'SET_QUOTED_MESSAGE', payload: message.id })} className="p-2 bg-white/15 hover:bg-white/30 backdrop-blur-md rounded-xl text-white transition-colors">
                       <Reply className="w-4 h-4" />

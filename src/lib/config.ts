@@ -8,4 +8,8 @@ export const runtimeConfig: RuntimeConfig = {
     'Use the site preset model without configuring a personal API key.',
   sharedProviderEnabled: import.meta.env.VITE_SHARED_PROVIDER_ENABLED === 'true',
   supportEmail: import.meta.env.VITE_SUPPORT_EMAIL || '',
+  imageReferenceEnabled: true,
+  imageReferenceHint:
+    import.meta.env.VITE_IMAGE_REFERENCE_HINT ||
+    'Reference images are forwarded when the upstream image model accepts multimodal prompt content; otherwise the app falls back to contextual text guidance.',
 };

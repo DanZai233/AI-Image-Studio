@@ -1,6 +1,17 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import { AppState, AIModelSettings, ImageAsset, InputMode, Locale, Message, PromptBuilderState } from '../types';
+import { AppState, AIModelSettings, ImageAsset, InputMode, Locale, Message, PromptBuilderState, Workspace } from '../types';
 import { runtimeConfig } from './config';
+
+const DEFAULT_WORKSPACE_ID = 'workspace_default';
+
+function createDefaultWorkspace(): Workspace {
+  return {
+    id: DEFAULT_WORKSPACE_ID,
+    name: 'Studio 01',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+}
 
 type Action =
   | { type: 'SET_SETTINGS'; payload: Partial<AIModelSettings> }
@@ -20,7 +31,12 @@ type Action =
   | { type: 'MARK_RECENT_TAG'; payload: string }
   | { type: 'SET_RUNTIME_CONFIG'; payload: AppState['runtimeConfig'] }
   | { type: 'SET_MOBILE_SIDEBAR_OPEN'; payload: boolean }
-  | { type: 'CLEAR_HISTORY' }
+  | { type: 'CREATE_WORKSPACE'; payload?: { name?: string } }
+  | { type: 'SET_ACTIVE_WORKSPACE'; payload: string }
+  | { type: 'RENAME_WORKSPACE'; payload: { id: string; name: string } }
+  | { type: 'ARCHIVE_WORKSPACE'; payload: string }
+  | { type: 'CLEAR_ACTIVE_WORKSPACE' }
+  | { type: 'SET_LIGHTBOX_ASSET'; payload: string | null }
   | { type: 'LOAD_STATE'; payload: Partial<AppState> };
 
 const defaultSettings: AIModelSettings = {
@@ -51,16 +67,70 @@ function pushRecent(list: string[], id: string) {
   return [id, ...list.filter((item) => item !== id)].slice(0, 8);
 }
 
+function touchWorkspace(workspaces: Workspace[], workspaceId: string) {
+  return workspaces.map((workspace) =>
+    workspace.id === workspaceId
+      ? {
+          ...workspace,
+          updatedAt: Date.now(),
+        }
+      : workspace,
+  );
+}
+
+function sanitizePersistedSettings(settings) {
+  return {
+    ...settings,
+    apiKey: '',
+    sharedPassword: '',
+  };
+}
+
+function migratePersistedState(payload: Partial<AppState>): Partial<AppState> {
+  const defaultWorkspace = createDefaultWorkspace();
+  const savedWorkspaces = payload.workspaces?.length ? payload.workspaces : [defaultWorkspace];
+  const fallbackWorkspaceId =
+    payload.activeWorkspaceId && savedWorkspaces.some((workspace) => workspace.id === payload.activeWorkspaceId)
+      ? payload.activeWorkspaceId
+      : savedWorkspaces[0].id;
+
+  const migratedMessages = (payload.messages ?? []).map((message) => ({
+    ...message,
+    workspaceId: message.workspaceId || fallbackWorkspaceId,
+  }));
+
+  const migratedAssets = Object.fromEntries(
+    Object.entries(payload.assets ?? {}).map(([assetId, asset]) => [
+      assetId,
+      {
+        ...asset,
+        workspaceId: asset.workspaceId || fallbackWorkspaceId,
+      },
+    ]),
+  );
+
+  return {
+    ...payload,
+    messages: migratedMessages,
+    assets: migratedAssets,
+    workspaces: savedWorkspaces,
+    activeWorkspaceId: fallbackWorkspaceId,
+  };
+}
+
 const initialState: AppState = {
   settings: defaultSettings,
   messages: [],
   assets: {},
+  workspaces: [createDefaultWorkspace()],
+  activeWorkspaceId: DEFAULT_WORKSPACE_ID,
   quotedMessageId: null,
   inputMode: 'image',
   locale: 'zh',
   runtimeConfig,
   promptBuilder: defaultPromptBuilder,
   isMobileSidebarOpen: false,
+  lightboxAssetId: null,
 };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -68,7 +138,11 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SET_SETTINGS':
       return { ...state, settings: { ...state.settings, ...action.payload } };
     case 'ADD_MESSAGE':
-      return { ...state, messages: [...state.messages, action.payload] };
+      return {
+        ...state,
+        messages: [...state.messages, action.payload],
+        workspaces: touchWorkspace(state.workspaces, action.payload.workspaceId),
+      };
     case 'REMOVE_MESSAGE':
       return { ...state, messages: state.messages.filter((m) => m.id !== action.payload) };
     case 'UPDATE_MESSAGE':
@@ -87,6 +161,7 @@ function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         assets: { ...state.assets, [action.payload.id]: action.payload },
+        workspaces: touchWorkspace(state.workspaces, action.payload.workspaceId),
       };
     case 'SET_QUOTED_MESSAGE':
       return { ...state, quotedMessageId: action.payload };
@@ -152,8 +227,58 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, runtimeConfig: action.payload };
     case 'SET_MOBILE_SIDEBAR_OPEN':
       return { ...state, isMobileSidebarOpen: action.payload };
-    case 'CLEAR_HISTORY':
-      return { ...state, messages: [], assets: {}, quotedMessageId: null, isMobileSidebarOpen: false };
+    case 'CREATE_WORKSPACE': {
+      const workspaceCount = state.workspaces.length + 1;
+      const nextWorkspace: Workspace = {
+        id: `workspace_${crypto.randomUUID()}`,
+        name: action.payload?.name?.trim() || `Studio ${String(workspaceCount).padStart(2, '0')}`,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      return {
+        ...state,
+        workspaces: [nextWorkspace, ...state.workspaces],
+        activeWorkspaceId: nextWorkspace.id,
+        quotedMessageId: null,
+        lightboxAssetId: null,
+      };
+    }
+    case 'SET_ACTIVE_WORKSPACE':
+      return { ...state, activeWorkspaceId: action.payload, quotedMessageId: null, lightboxAssetId: null, isMobileSidebarOpen: false };
+    case 'RENAME_WORKSPACE':
+      return {
+        ...state,
+        workspaces: state.workspaces.map((workspace) =>
+          workspace.id === action.payload.id ? { ...workspace, name: action.payload.name.trim() || workspace.name } : workspace,
+        ),
+      };
+    case 'ARCHIVE_WORKSPACE': {
+      if (state.workspaces.length <= 1) return state;
+      const nextWorkspaces = state.workspaces.filter((workspace) => workspace.id !== action.payload);
+      const nextActiveWorkspaceId = state.activeWorkspaceId === action.payload ? nextWorkspaces[0].id : state.activeWorkspaceId;
+      return {
+        ...state,
+        workspaces: nextWorkspaces,
+        activeWorkspaceId: nextActiveWorkspaceId,
+        messages: state.messages.filter((message) => message.workspaceId !== action.payload),
+        assets: Object.fromEntries(Object.entries(state.assets).filter(([, asset]) => asset.workspaceId !== action.payload)),
+        quotedMessageId: null,
+        lightboxAssetId: null,
+      };
+    }
+    case 'CLEAR_ACTIVE_WORKSPACE':
+      return {
+        ...state,
+        messages: state.messages.filter((message) => message.workspaceId !== state.activeWorkspaceId),
+        assets: Object.fromEntries(Object.entries(state.assets).filter(([, asset]) => asset.workspaceId !== state.activeWorkspaceId)),
+        quotedMessageId: null,
+        lightboxAssetId: null,
+        workspaces: state.workspaces.map((workspace) =>
+          workspace.id === state.activeWorkspaceId ? { ...workspace, updatedAt: Date.now() } : workspace,
+        ),
+      };
+    case 'SET_LIGHTBOX_ASSET':
+      return { ...state, lightboxAssetId: action.payload };
     case 'LOAD_STATE': {
       const mergedSettings = { ...defaultSettings, ...(action.payload.settings ?? {}) };
       const mergedPromptBuilder = {
@@ -161,13 +286,21 @@ function reducer(state: AppState, action: Action): AppState {
         ...(action.payload.promptBuilder ?? {}),
         isPromptStoreOpen: false,
       };
+      const savedWorkspaces = action.payload.workspaces?.length ? action.payload.workspaces : [createDefaultWorkspace()];
+      const activeWorkspaceId =
+        action.payload.activeWorkspaceId && savedWorkspaces.some((workspace) => workspace.id === action.payload.activeWorkspaceId)
+          ? action.payload.activeWorkspaceId
+          : savedWorkspaces[0].id;
       return {
         ...state,
         ...action.payload,
         settings: mergedSettings,
         promptBuilder: mergedPromptBuilder,
         runtimeConfig,
+        workspaces: savedWorkspaces,
+        activeWorkspaceId,
         isMobileSidebarOpen: false,
+        lightboxAssetId: null,
       };
     }
     default:
@@ -190,7 +323,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        dispatch({ type: 'LOAD_STATE', payload: parsed });
+        dispatch({ type: 'LOAD_STATE', payload: migratePersistedState(parsed) });
       } catch (e) {
         console.error('Failed to load state', e);
       }
@@ -202,8 +335,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({
-          settings: state.settings,
+          settings: sanitizePersistedSettings(state.settings),
           locale: state.locale,
+          messages: state.messages,
+          assets: state.assets,
+          workspaces: state.workspaces,
+          activeWorkspaceId: state.activeWorkspaceId,
           promptBuilder: {
             ...state.promptBuilder,
             isPromptStoreOpen: false,
@@ -213,7 +350,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error('Failed to save state', e);
     }
-  }, [state.settings, state.locale, state.promptBuilder]);
+  }, [state.settings, state.locale, state.messages, state.assets, state.workspaces, state.activeWorkspaceId, state.promptBuilder]);
 
   return <AppStateContext.Provider value={{ state, dispatch }}>{children}</AppStateContext.Provider>;
 }

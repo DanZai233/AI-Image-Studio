@@ -13,6 +13,11 @@ import {
   Compass,
   GalleryVerticalEnd,
   BadgeCheck,
+  FolderOpen,
+  Plus,
+  Pencil,
+  Image as ImageIcon,
+  Archive,
 } from 'lucide-react';
 import { generateId, cn } from './lib/utils';
 import { fetchImageGeneration, fetchChatCompletionStream } from './lib/openai';
@@ -22,7 +27,29 @@ import { promptPresets, tagDefinitions } from './lib/promptLibrary';
 function SidebarContent({ onCloseMobile }: { onCloseMobile?: () => void }) {
   const { state, dispatch } = useAppStore();
   const locale = state.locale;
-  const assetList = Object.values(state.assets).sort((a, b) => b.createdAt - a.createdAt);
+  const activeWorkspace = state.workspaces.find((workspace) => workspace.id === state.activeWorkspaceId) || state.workspaces[0];
+  const assetList = Object.values(state.assets)
+    .filter((asset) => asset.workspaceId === state.activeWorkspaceId)
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const workspaceMessages = state.messages.filter((message) => message.workspaceId === state.activeWorkspaceId);
+
+  const handleRename = () => {
+    if (!activeWorkspace) return;
+    const nextName = window.prompt(locale === 'zh' ? '输入新的工作区名称' : 'Enter a new workspace name', activeWorkspace.name);
+    if (nextName) {
+      dispatch({ type: 'RENAME_WORKSPACE', payload: { id: activeWorkspace.id, name: nextName } });
+    }
+  };
+
+  const handleArchive = () => {
+    if (!activeWorkspace || state.workspaces.length <= 1) return;
+    const confirmed = window.confirm(
+      `${t(locale, 'workspaceDeleteConfirmPrefix')}${activeWorkspace.name}${t(locale, 'workspaceDeleteConfirmSuffix')}`,
+    );
+    if (confirmed) {
+      dispatch({ type: 'ARCHIVE_WORKSPACE', payload: activeWorkspace.id });
+    }
+  };
 
   return (
     <div className="h-full min-h-0 flex flex-col">
@@ -50,12 +77,82 @@ function SidebarContent({ onCloseMobile }: { onCloseMobile?: () => void }) {
             Atelier Notes
           </div>
           {locale === 'zh'
-            ? '把灵感、参考图与生成结果收在同一个工作台里，让创作更连贯。'
-            : 'Keep inspiration, references, and generations in one elegant workspace.'}
+            ? '每个工作区都会保存自己的聊天、参考图与生成结果，并默认作为同一上下文继续创作。'
+            : 'Each workspace keeps its own chat, references, and generations, then reuses them as shared context.'}
         </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-5 md:p-6 space-y-6">
+        <div className="rounded-[28px] border border-white/8 bg-black/15 p-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.28em] text-white/35">
+              <FolderOpen className="w-4 h-4" />
+              {locale === 'zh' ? '工作区' : 'Workspaces'}
+            </div>
+            <button
+              onClick={() => {
+                dispatch({ type: 'CREATE_WORKSPACE' });
+                onCloseMobile?.();
+              }}
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-xs text-white/75 hover:bg-white/10"
+            >
+              <Plus className="w-4 h-4" />
+              {locale === 'zh' ? '新建' : 'New'}
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {state.workspaces
+              .slice()
+              .sort((a, b) => b.updatedAt - a.updatedAt)
+              .map((workspace) => {
+                const isActive = workspace.id === state.activeWorkspaceId;
+                const workspaceAssetCount = Object.values(state.assets).filter((asset) => asset.workspaceId === workspace.id).length;
+                const workspaceMessageCount = state.messages.filter((message) => message.workspaceId === workspace.id).length;
+                return (
+                  <button
+                    key={workspace.id}
+                    onClick={() => {
+                      dispatch({ type: 'SET_ACTIVE_WORKSPACE', payload: workspace.id });
+                      onCloseMobile?.();
+                    }}
+                    className={cn(
+                      'w-full rounded-[22px] border p-3 text-left transition-all',
+                      isActive ? 'border-fuchsia-300/30 bg-fuchsia-300/12' : 'border-white/8 bg-white/[0.03] hover:bg-white/8',
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm text-white font-medium">{workspace.name}</div>
+                        <div className="mt-1 text-xs text-white/45">
+                          {workspaceMessageCount} {locale === 'zh' ? '条消息' : 'messages'} · {workspaceAssetCount} {locale === 'zh' ? '张图片' : 'images'}
+                        </div>
+                      </div>
+                      {isActive && <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-white/60">LIVE</span>}
+                    </div>
+                  </button>
+                );
+              })}
+          </div>
+
+          {activeWorkspace && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button onClick={handleRename} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-xs text-white/65 hover:bg-white/10">
+                <Pencil className="w-4 h-4" />
+                {locale === 'zh' ? '重命名当前工作区' : 'Rename current workspace'}
+              </button>
+              <button
+                onClick={handleArchive}
+                disabled={state.workspaces.length <= 1}
+                className="inline-flex items-center gap-2 rounded-full border border-rose-300/15 bg-rose-300/8 px-3 py-1.5 text-xs text-rose-100/75 hover:bg-rose-300/12 disabled:opacity-40"
+              >
+                <Archive className="w-4 h-4" />
+                {locale === 'zh' ? '删除当前工作区' : 'Delete current workspace'}
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="rounded-[28px] border border-white/8 bg-black/15 p-4">
           <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.28em] text-white/35 mb-3">
             <GalleryVerticalEnd className="w-4 h-4" />
@@ -63,15 +160,30 @@ function SidebarContent({ onCloseMobile }: { onCloseMobile?: () => void }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             {assetList.map((asset) => (
-              <div key={asset.id} className="group relative aspect-square overflow-hidden rounded-[22px] border border-white/10 bg-black/20">
+              <button
+                key={asset.id}
+                onClick={() => dispatch({ type: 'SET_LIGHTBOX_ASSET', payload: asset.id })}
+                className="group relative aspect-square overflow-hidden rounded-[22px] border border-white/10 bg-black/20 text-left"
+              >
                 <img src={asset.url} alt={asset.id} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-3 text-[11px] text-white/70 font-mono truncate">
-                  @{asset.id}
-                </div>
-              </div>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-70" />
+                <div className="absolute inset-x-0 bottom-0 p-3 text-[11px] text-white/70 font-mono truncate">@{asset.id}</div>
+              </button>
             ))}
             {assetList.length === 0 && <div className="col-span-2 text-sm text-white/35 italic leading-7">{t(locale, 'noImages')}</div>}
           </div>
+        </div>
+
+        <div className="rounded-[28px] border border-white/8 bg-black/15 p-4">
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.28em] text-white/35 mb-3">
+            <ImageIcon className="w-4 h-4" />
+            {locale === 'zh' ? '当前上下文' : 'Current context'}
+          </div>
+          <p className="text-sm text-white/58 leading-7">
+            {locale === 'zh'
+              ? `当前工作区已保存 ${workspaceMessages.length} 条消息与 ${assetList.length} 张图片；聊天和生成都会默认带上这些上下文。`
+              : `This workspace keeps ${workspaceMessages.length} messages and ${assetList.length} images; chat and generation automatically reuse them as context.`}
+          </p>
         </div>
       </div>
 
@@ -89,7 +201,7 @@ function SidebarContent({ onCloseMobile }: { onCloseMobile?: () => void }) {
         </div>
         <button
           onClick={() => {
-            dispatch({ type: 'CLEAR_HISTORY' });
+            dispatch({ type: 'CREATE_WORKSPACE' });
             onCloseMobile?.();
           }}
           className="w-full rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-black hover:bg-white/90"
@@ -101,11 +213,36 @@ function SidebarContent({ onCloseMobile }: { onCloseMobile?: () => void }) {
   );
 }
 
+function Lightbox() {
+  const { state, dispatch } = useAppStore();
+  const asset = state.lightboxAssetId ? state.assets[state.lightboxAssetId] : null;
+  if (!asset) return null;
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 md:p-8">
+      <button className="absolute inset-0 bg-black/88 backdrop-blur-md" onClick={() => dispatch({ type: 'SET_LIGHTBOX_ASSET', payload: null })} />
+      <div className="relative max-w-6xl w-full flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3 rounded-full border border-white/10 bg-black/35 px-4 py-3 text-white/75 backdrop-blur-xl">
+          <div className="min-w-0 truncate font-mono text-sm">@{asset.id}</div>
+          <button onClick={() => dispatch({ type: 'SET_LIGHTBOX_ASSET', payload: null })} className="rounded-full border border-white/10 bg-white/6 p-2 hover:bg-white/10">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="overflow-hidden rounded-[28px] border border-white/10 bg-black/30 shadow-[0_30px_120px_rgba(0,0,0,0.55)]">
+          <img src={asset.url} alt={asset.id} className="max-h-[78vh] w-full object-contain bg-black" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MainApp() {
   const { state, dispatch } = useAppStore();
   const [showSettings, setShowSettings] = React.useState(false);
   const [showSidebar, setShowSidebar] = React.useState(true);
   const locale = state.locale;
+  const activeWorkspace = state.workspaces.find((workspace) => workspace.id === state.activeWorkspaceId) || state.workspaces[0];
+  const workspaceMessages = state.messages.filter((message) => message.workspaceId === state.activeWorkspaceId);
 
   useEffect(() => {
     fetch('/api/provider/unlock')
@@ -117,6 +254,45 @@ function MainApp() {
   const selectedPreset = promptPresets.find((preset) => preset.id === state.promptBuilder.selectedPresetId) || null;
   const selectedTags = tagDefinitions.filter((tag) => state.promptBuilder.selectedTagIds.includes(tag.id));
 
+  const buildWorkspaceContextMessages = (nextUserMessage?: { id: string; content: string; imageAssets: string[] }) => {
+    const baseMessages = [...workspaceMessages];
+
+    if (nextUserMessage) {
+      baseMessages.push({
+        id: nextUserMessage.id,
+        role: 'user',
+        content: nextUserMessage.content,
+        mode: state.inputMode,
+        imageAssets: nextUserMessage.imageAssets,
+        timestamp: Date.now(),
+        workspaceId: state.activeWorkspaceId,
+      });
+    }
+
+    return baseMessages.map((m) => {
+      const contentParts: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [];
+      const textContent = m.content?.trim();
+      if (textContent) {
+        contentParts.push({ type: 'text', text: textContent });
+      }
+      (m.imageAssets || []).forEach((assetId) => {
+        const asset = state.assets[assetId];
+        if (asset) {
+          contentParts.push({ type: 'image_url', image_url: { url: asset.url } });
+        }
+      });
+
+      if (contentParts.length === 0) {
+        contentParts.push({ type: 'text', text: '(Empty message)' });
+      }
+
+      return {
+        role: m.role,
+        content: contentParts.length === 1 && contentParts[0].type === 'text' ? contentParts[0].text : contentParts,
+      };
+    });
+  };
+
   const handleSubmit = async (text: string, referencedAssets: string[]) => {
     const { inputMode, settings } = state;
 
@@ -126,19 +302,19 @@ function MainApp() {
     };
 
     const userMsgId = generateId('msg_');
-    dispatch({
-      type: 'ADD_MESSAGE',
-      payload: {
-        id: userMsgId,
-        role: 'user',
-        content: text,
-        mode: inputMode,
-        imageAssets: referencedAssets,
-        quotedMessageId: state.quotedMessageId,
-        timestamp: Date.now(),
-        metadata,
-      },
-    });
+    const userMessage = {
+      id: userMsgId,
+      role: 'user' as const,
+      content: text,
+      mode: inputMode,
+      imageAssets: referencedAssets,
+      quotedMessageId: state.quotedMessageId,
+      timestamp: Date.now(),
+      metadata,
+      workspaceId: state.activeWorkspaceId,
+    };
+
+    dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
 
     try {
       if (inputMode === 'image') {
@@ -151,66 +327,80 @@ function MainApp() {
             content: locale === 'zh' ? '正在生成图像，请稍候…' : 'Generating your image…',
             mode: 'image',
             timestamp: Date.now(),
+            workspaceId: state.activeWorkspaceId,
           },
         });
 
-        const b64Url = await fetchImageGeneration(settings, text);
-        const imgId = generateId('IMG_');
+        try {
+          const referenceAssets = referencedAssets.map((assetId) => state.assets[assetId]).filter(Boolean);
+          const fallbackContext = [
+            locale === 'zh'
+              ? '以下是当前工作区最近的创作摘要与参考图线索，请延续这些上下文与视觉线索来完成新的图片生成。'
+              : 'The following workspace summary contains recent creative cues and reference-image signals. Continue those context cues and visual continuity for the next image generation.',
+            ...workspaceMessages.slice(-6).map((message) => {
+              const referenced = (message.imageAssets || [])
+                .map((assetId) => state.assets[assetId])
+                .filter(Boolean)
+                .map((asset) => `${asset.id}${asset.prompt ? `: ${asset.prompt}` : ''}`)
+                .join(', ');
+              const clippedContent = (message.content || '').trim().slice(0, 240);
+              return `${message.role === 'user' ? 'User' : 'Assistant'}: ${clippedContent}${referenced ? ` [images: ${referenced}]` : ''}`;
+            }),
+          ]
+            .filter(Boolean)
+            .join('\n');
 
-        dispatch({ type: 'REMOVE_MESSAGE', payload: tempMsgId });
-        dispatch({
-          type: 'ADD_ASSET',
-          payload: {
-            id: imgId,
-            name: `Gen_${imgId}`,
-            url: b64Url,
-            source: 'generation',
-            createdAt: Date.now(),
-            prompt: text,
-          },
-        });
+          const b64Url = await fetchImageGeneration(settings, text, referenceAssets, fallbackContext);
+          const imgId = generateId('IMG_');
 
-        dispatch({
-          type: 'ADD_MESSAGE',
-          payload: {
-            id: generateId('msg_'),
-            role: 'assistant',
-            content: selectedPreset
-              ? `${locale === 'zh' ? '已根据预设生成：' : 'Generated with preset:'} ${selectedPreset.title[locale]}`
-              : locale === 'zh'
-                ? '图像生成完成。'
-                : 'Image generation complete.',
-            mode: 'image',
-            imageAssets: [imgId],
-            timestamp: Date.now(),
-            metadata,
-          },
-        });
+          dispatch({ type: 'REMOVE_MESSAGE', payload: tempMsgId });
+          dispatch({
+            type: 'ADD_ASSET',
+            payload: {
+              id: imgId,
+              name: `Gen_${imgId}`,
+              url: b64Url,
+              source: 'generation',
+              createdAt: Date.now(),
+              prompt: text,
+              workspaceId: state.activeWorkspaceId,
+            },
+          });
+
+          dispatch({
+            type: 'ADD_MESSAGE',
+            payload: {
+              id: generateId('msg_'),
+              role: 'assistant',
+              content: selectedPreset
+                ? `${locale === 'zh' ? '已根据预设生成：' : 'Generated with preset:'} ${selectedPreset.title[locale]}`
+                : locale === 'zh'
+                  ? '图像生成完成。'
+                  : 'Image generation complete.',
+              mode: 'image',
+              imageAssets: [imgId],
+              timestamp: Date.now(),
+              metadata,
+              workspaceId: state.activeWorkspaceId,
+            },
+          });
+        } catch (err) {
+          dispatch({ type: 'REMOVE_MESSAGE', payload: tempMsgId });
+          throw err;
+        }
       } else {
         const aiMsgId = generateId('msg_');
         dispatch({
           type: 'ADD_MESSAGE',
-          payload: { id: aiMsgId, role: 'assistant', content: '', mode: 'chat', timestamp: Date.now() },
+          payload: { id: aiMsgId, role: 'assistant', content: '', mode: 'chat', timestamp: Date.now(), workspaceId: state.activeWorkspaceId },
         });
 
-        const history = [...state.messages, { id: userMsgId, role: 'user', content: text, imageAssets: referencedAssets }].map((m) => {
-          if (!m.imageAssets || m.imageAssets.length === 0) {
-            return { role: m.role, content: m.content };
-          }
-          const contentParts: any[] = [{ type: 'text', text: m.content || '(Included Image)' }];
-          m.imageAssets.forEach((assetId: string) => {
-            const asset = state.assets[assetId];
-            if (asset) {
-              contentParts.push({ type: 'image_url', image_url: { url: asset.url } });
-            }
-          });
-          return { role: m.role, content: contentParts };
-        });
+        const history = buildWorkspaceContextMessages({ id: userMsgId, content: text, imageAssets: referencedAssets });
 
         const systemPrompt =
           locale === 'zh'
-            ? '你是一位智能视觉助理。你可以理解用户上传的图片，回答时使用 Markdown，并在合适时提供更有审美和结构性的建议。'
-            : 'You are an intelligent visual assistant. You can understand user images, respond in Markdown, and provide tasteful, structured creative suggestions when helpful.';
+            ? '你是一位智能视觉助理。你可以理解用户上传的图片、工作区内已有的参考图和历史对话。回答时使用 Markdown，并在合适时提供更有审美和结构性的建议。'
+            : 'You are an intelligent visual assistant. You can understand user-uploaded images, workspace reference images, and prior dialogue. Respond in Markdown and offer tasteful, structured creative suggestions when helpful.';
 
         const stream = fetchChatCompletionStream(settings, systemPrompt, history);
         for await (const chunk of stream) {
@@ -228,6 +418,7 @@ function MainApp() {
           mode: inputMode,
           timestamp: Date.now(),
           isError: true,
+          workspaceId: state.activeWorkspaceId,
         },
       });
     }
@@ -272,7 +463,7 @@ function MainApp() {
               </button>
               <div className="min-w-0">
                 <div className="text-[11px] uppercase tracking-[0.32em] text-white/35">{t(locale, 'navWorkspace')}</div>
-                <div className="text-sm text-white/78 mt-0.5 truncate">{state.runtimeConfig.appName}</div>
+                <div className="text-sm text-white/78 mt-0.5 truncate">{activeWorkspace?.name || state.runtimeConfig.appName}</div>
               </div>
             </div>
 
@@ -295,9 +486,7 @@ function MainApp() {
           <div className="mx-auto max-w-6xl rounded-[28px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] px-4 md:px-6 py-4 shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur-xl">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
-                <div className="text-[11px] uppercase tracking-[0.34em] text-white/36">
-                  {t(locale, 'creativeRitual')}
-                </div>
+                <div className="text-[11px] uppercase tracking-[0.34em] text-white/36">{t(locale, 'creativeRitual')}</div>
                 <h1 className="mt-2 text-xl md:text-2xl text-white font-light tracking-[0.04em]">
                   {state.inputMode === 'image'
                     ? locale === 'zh'
@@ -310,11 +499,11 @@ function MainApp() {
                 <p className="mt-2 text-sm md:text-[15px] text-white/58 max-w-3xl leading-7">
                   {state.inputMode === 'image'
                     ? locale === 'zh'
-                      ? '从预设、风格标签、构图与材质细节中快速搭建高质量提示词，输入区与商店分层滚动，不再互相遮挡。'
-                      : 'Build polished prompts from presets, style tags, composition, and materials with layered scrolling that keeps the editor visible.'
+                      ? '当前工作区会自动带上历史对话、参考图与生成结果作为上下文，并优先把引用图片直接送入生成接口。'
+                      : 'Your active workspace carries prior dialogue, references, and generations as context, and now forwards referenced images directly to the generation API when supported.'
                     : locale === 'zh'
-                      ? '聊天模式下保留稳定的消息流与底部输入区，适合对图像进行分析、追问和创意延展。'
-                      : 'Chat mode keeps a clean message flow and anchored composer for image analysis, follow-up questions, and ideation.'}
+                      ? '聊天模式下会读取当前工作区中的图片与文字上下文，适合对图像进行分析、追问和创意延展。'
+                      : 'Chat mode reads the current workspace images and text context, ideal for analysis, follow-up questions, and ideation.'}
                 </p>
               </div>
 
@@ -343,6 +532,7 @@ function MainApp() {
       </main>
 
       {showSettings && <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />}
+      <Lightbox />
     </div>
   );
 }

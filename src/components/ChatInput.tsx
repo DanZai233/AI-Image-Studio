@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Paperclip, X, Sparkles, MessageSquare, Languages, Wand2, Store, SlidersHorizontal } from 'lucide-react';
+import { Paperclip, X, Sparkles, MessageSquare, Languages, Store, SlidersHorizontal } from 'lucide-react';
 import { useAppStore } from '../lib/store';
 import { generateId, fileToBase64, cn } from '../lib/utils';
 import { ImageAsset } from '../types';
@@ -22,7 +22,7 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
     }
   }, [text]);
 
-  const allAssetIds = Object.keys(state.assets);
+  const allAssetIds = Object.keys(state.assets).filter((id) => state.assets[id]?.workspaceId === state.activeWorkspaceId);
   const referencedAssets = useMemo(() => allAssetIds.filter((id) => text.includes(`@${id}`)), [allAssetIds, text]);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -81,6 +81,7 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
         url: b64,
         source: 'upload',
         createdAt: Date.now(),
+        workspaceId: state.activeWorkspaceId,
       };
       dispatch({ type: 'ADD_ASSET', payload: newAsset });
       setText((prev) => prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + `@${id} `);
@@ -91,7 +92,9 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const quotedMessage = state.quotedMessageId ? state.messages.find((m) => m.id === state.quotedMessageId) : null;
+  const workspaceMessages = state.messages.filter((message) => message.workspaceId === state.activeWorkspaceId);
+  const quotedMessage = state.quotedMessageId ? workspaceMessages.find((m) => m.id === state.quotedMessageId) : null;
+  const canSubmit = Boolean(text.trim() || referencedAssets.length);
 
   return (
     <div className="relative w-full max-w-6xl mx-auto px-4 md:px-8 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-8 pt-2 mt-auto shrink-0">
@@ -218,36 +221,21 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
                 {t(locale, 'uploadRefImage')}
               </button>
               <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
-
-              {referencedAssets.map((id) => (
-                <div key={id} className="flex items-center gap-2 rounded-full border border-white/8 bg-black/20 px-2.5 py-1.5">
-                  <img src={state.assets[id]?.url} alt={id} className="w-5 h-5 rounded-full object-cover" />
-                  <span className="text-[11px] text-white/70 font-mono">@{id}</span>
-                </div>
-              ))}
+              <div className="text-xs text-white/40">
+                {locale === 'zh'
+                  ? `当前工作区已带入 ${workspaceMessages.length} 条消息和 ${allAssetIds.length} 张图片上下文`
+                  : `${workspaceMessages.length} messages and ${allAssetIds.length} images are in this workspace context`}
+              </div>
             </div>
-
             <button
               onClick={handleSubmit}
-              disabled={!text.trim() && referencedAssets.length === 0}
-              className={cn(
-                'inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-all',
-                text.trim() || referencedAssets.length > 0
-                  ? state.inputMode === 'chat'
-                    ? 'bg-white text-black hover:bg-white/90'
-                    : 'bg-gradient-to-r from-fuchsia-500 to-amber-300 text-black hover:scale-[1.01]'
-                  : 'bg-white/8 text-white/30',
-              )}
+              disabled={!canSubmit}
+              className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-45"
             >
-              <Wand2 className="w-4 h-4" />
-              {state.inputMode === 'chat' ? t(locale, 'send') : t(locale, 'generate')}
+              {state.inputMode === 'image' ? t(locale, 'generate') : t(locale, 'send')}
             </button>
           </div>
         </div>
-      </div>
-
-      <div className="text-center mt-3">
-        <p className="text-[11px] text-white/28">{t(locale, 'verifyInfo')}</p>
       </div>
     </div>
   );
