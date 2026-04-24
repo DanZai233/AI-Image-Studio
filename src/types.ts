@@ -12,6 +12,9 @@ export type VisualStyleKey =
   | 'interior'
   | 'fashion';
 
+export type PromptPresetCategory = 'portrait' | 'cinematic' | 'illustration' | 'product' | 'space';
+export type PromptTagGroup = 'quality' | 'lighting' | 'composition' | 'style' | 'camera' | 'mood' | 'material';
+
 export interface AIModelSettings {
   apiKey: string;
   endpoint: string;
@@ -42,10 +45,11 @@ export interface PromptPreset {
   id: string;
   title: Record<Locale, string>;
   description: Record<Locale, string>;
-  category: string;
+  category: PromptPresetCategory;
   prompt: Record<Locale, string>;
   tags: string[];
   recommendedNegativePrompt?: string;
+  featured?: boolean;
 }
 
 export interface TagDefinition {
@@ -53,7 +57,8 @@ export interface TagDefinition {
   label: Record<Locale, string>;
   description: Record<Locale, string>;
   value: string;
-  group: 'quality' | 'lighting' | 'composition' | 'style' | 'camera' | 'mood' | 'material';
+  group: PromptTagGroup;
+  featured?: boolean;
 }
 
 export interface Message {
@@ -75,6 +80,15 @@ export interface PromptBuilderState {
   selectedPresetId: string | null;
   selectedTagIds: string[];
   customSuffix: string;
+  presetSearch: string;
+  tagSearch: string;
+  activePresetCategory: PromptPresetCategory | 'all';
+  activeTagGroup: PromptTagGroup | 'all';
+  favoritePresetIds: string[];
+  favoriteTagIds: string[];
+  recentPresetIds: string[];
+  recentTagIds: string[];
+  isPromptStoreOpen: boolean;
 }
 
 export type AppState = {

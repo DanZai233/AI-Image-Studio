@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Paperclip, X, Sparkles, MessageSquare, Languages, Wand2 } from 'lucide-react';
+import { Paperclip, X, Sparkles, MessageSquare, Languages, Wand2, Store, SlidersHorizontal } from 'lucide-react';
 import { useAppStore } from '../lib/store';
 import { generateId, fileToBase64, cn } from '../lib/utils';
 import { ImageAsset } from '../types';
@@ -45,6 +45,13 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
     dispatch({ type: 'SET_QUOTED_MESSAGE', payload: null });
   };
 
+  const togglePromptStore = () => {
+    dispatch({
+      type: 'SET_PROMPT_BUILDER',
+      payload: { isPromptStoreOpen: !state.promptBuilder.isPromptStoreOpen },
+    });
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !showMentions) {
       e.preventDefault();
@@ -88,7 +95,15 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
 
   return (
     <div className="relative w-full max-w-6xl mx-auto px-4 md:px-8 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-8 pt-2 mt-auto shrink-0">
-      {state.inputMode === 'image' && <PromptStore onApplyPrompt={(prompt) => setText(prompt)} />}
+      {state.inputMode === 'image' && state.promptBuilder.isPromptStoreOpen && (
+        <PromptStore
+          onApplyPrompt={(prompt) => {
+            setText(prompt);
+            dispatch({ type: 'SET_PROMPT_BUILDER', payload: { isPromptStoreOpen: false } });
+          }}
+          onClose={() => dispatch({ type: 'SET_PROMPT_BUILDER', payload: { isPromptStoreOpen: false } })}
+        />
+      )}
 
       <div className="mt-5 rounded-[30px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(217,119,255,0.18),transparent_28%),radial-gradient(circle_at_top_right,rgba(251,191,36,0.12),transparent_25%),rgba(16,16,18,0.9)] p-3 md:p-4 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(135deg,rgba(255,255,255,0.05),transparent_30%,transparent_70%,rgba(255,255,255,0.04))]" />
@@ -118,6 +133,21 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
             <Sparkles className="w-4 h-4" />
             {t(locale, 'imageGeneration')}
           </button>
+
+          {state.inputMode === 'image' && (
+            <button
+              onClick={togglePromptStore}
+              className={cn(
+                'flex items-center gap-2 rounded-full px-4 py-2 text-sm transition-all border',
+                state.promptBuilder.isPromptStoreOpen
+                  ? 'border-amber-200/30 bg-amber-100/12 text-amber-50'
+                  : 'border-white/6 bg-black/15 text-white/55 hover:text-white',
+              )}
+            >
+              {state.promptBuilder.isPromptStoreOpen ? <SlidersHorizontal className="w-4 h-4" /> : <Store className="w-4 h-4" />}
+              {state.promptBuilder.isPromptStoreOpen ? (locale === 'zh' ? '关闭标签商店' : 'Close Prompt Store') : (locale === 'zh' ? '打开标签商店' : 'Open Prompt Store')}
+            </button>
+          )}
 
           <div className="ml-auto flex items-center gap-2 rounded-full border border-white/8 bg-black/15 px-2 py-1">
             <Languages className="w-4 h-4 text-white/50" />

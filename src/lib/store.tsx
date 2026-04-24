@@ -14,6 +14,10 @@ type Action =
   | { type: 'SET_LOCALE'; payload: Locale }
   | { type: 'SET_PROMPT_BUILDER'; payload: Partial<PromptBuilderState> }
   | { type: 'RESET_PROMPT_BUILDER' }
+  | { type: 'TOGGLE_FAVORITE_PRESET'; payload: string }
+  | { type: 'TOGGLE_FAVORITE_TAG'; payload: string }
+  | { type: 'MARK_RECENT_PRESET'; payload: string }
+  | { type: 'MARK_RECENT_TAG'; payload: string }
   | { type: 'SET_RUNTIME_CONFIG'; payload: AppState['runtimeConfig'] }
   | { type: 'SET_MOBILE_SIDEBAR_OPEN'; payload: boolean }
   | { type: 'CLEAR_HISTORY' }
@@ -32,7 +36,20 @@ const defaultPromptBuilder: PromptBuilderState = {
   selectedPresetId: null,
   selectedTagIds: [],
   customSuffix: '',
+  presetSearch: '',
+  tagSearch: '',
+  activePresetCategory: 'all',
+  activeTagGroup: 'all',
+  favoritePresetIds: [],
+  favoriteTagIds: [],
+  recentPresetIds: [],
+  recentTagIds: [],
+  isPromptStoreOpen: false,
 };
+
+function pushRecent(list: string[], id: string) {
+  return [id, ...list.filter((item) => item !== id)].slice(0, 8);
+}
 
 const initialState: AppState = {
   settings: defaultSettings,
@@ -80,7 +97,57 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SET_PROMPT_BUILDER':
       return { ...state, promptBuilder: { ...state.promptBuilder, ...action.payload } };
     case 'RESET_PROMPT_BUILDER':
-      return { ...state, promptBuilder: defaultPromptBuilder };
+      return {
+        ...state,
+        promptBuilder: {
+          ...defaultPromptBuilder,
+          favoritePresetIds: state.promptBuilder.favoritePresetIds,
+          favoriteTagIds: state.promptBuilder.favoriteTagIds,
+          recentPresetIds: state.promptBuilder.recentPresetIds,
+          recentTagIds: state.promptBuilder.recentTagIds,
+          isPromptStoreOpen: state.promptBuilder.isPromptStoreOpen,
+        },
+      };
+    case 'TOGGLE_FAVORITE_PRESET': {
+      const exists = state.promptBuilder.favoritePresetIds.includes(action.payload);
+      return {
+        ...state,
+        promptBuilder: {
+          ...state.promptBuilder,
+          favoritePresetIds: exists
+            ? state.promptBuilder.favoritePresetIds.filter((id) => id !== action.payload)
+            : [action.payload, ...state.promptBuilder.favoritePresetIds],
+        },
+      };
+    }
+    case 'TOGGLE_FAVORITE_TAG': {
+      const exists = state.promptBuilder.favoriteTagIds.includes(action.payload);
+      return {
+        ...state,
+        promptBuilder: {
+          ...state.promptBuilder,
+          favoriteTagIds: exists
+            ? state.promptBuilder.favoriteTagIds.filter((id) => id !== action.payload)
+            : [action.payload, ...state.promptBuilder.favoriteTagIds],
+        },
+      };
+    }
+    case 'MARK_RECENT_PRESET':
+      return {
+        ...state,
+        promptBuilder: {
+          ...state.promptBuilder,
+          recentPresetIds: pushRecent(state.promptBuilder.recentPresetIds, action.payload),
+        },
+      };
+    case 'MARK_RECENT_TAG':
+      return {
+        ...state,
+        promptBuilder: {
+          ...state.promptBuilder,
+          recentTagIds: pushRecent(state.promptBuilder.recentTagIds, action.payload),
+        },
+      };
     case 'SET_RUNTIME_CONFIG':
       return { ...state, runtimeConfig: action.payload };
     case 'SET_MOBILE_SIDEBAR_OPEN':
@@ -89,7 +156,11 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, messages: [], assets: {}, quotedMessageId: null, isMobileSidebarOpen: false };
     case 'LOAD_STATE': {
       const mergedSettings = { ...defaultSettings, ...(action.payload.settings ?? {}) };
-      const mergedPromptBuilder = { ...defaultPromptBuilder, ...(action.payload.promptBuilder ?? {}) };
+      const mergedPromptBuilder = {
+        ...defaultPromptBuilder,
+        ...(action.payload.promptBuilder ?? {}),
+        isPromptStoreOpen: false,
+      };
       return {
         ...state,
         ...action.payload,
@@ -133,7 +204,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         JSON.stringify({
           settings: state.settings,
           locale: state.locale,
-          promptBuilder: state.promptBuilder,
+          promptBuilder: {
+            ...state.promptBuilder,
+            isPromptStoreOpen: false,
+          },
         }),
       );
     } catch (e) {

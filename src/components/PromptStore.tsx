@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Wand2, Palette, Camera, SunMedium, Gem, Bookmark, Layers3 } from 'lucide-react';
+import { Sparkles, Wand2, Palette, Camera, SunMedium, Gem, Bookmark, Layers3, X } from 'lucide-react';
 import { useAppStore } from '../lib/store';
 import { promptPresets, tagDefinitions } from '../lib/promptLibrary';
 import { t } from '../lib/i18n';
@@ -15,7 +15,7 @@ const groupIconMap = {
   material: Gem,
 } as const;
 
-export function PromptStore({ onApplyPrompt }: { onApplyPrompt: (prompt: string) => void }) {
+export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt: string) => void; onClose: () => void }) {
   const { state, dispatch } = useAppStore();
   const { locale, promptBuilder } = state;
   const selectedPreset = promptPresets.find((preset) => preset.id === promptBuilder.selectedPresetId) || null;
@@ -42,14 +42,21 @@ export function PromptStore({ onApplyPrompt }: { onApplyPrompt: (prompt: string)
   };
 
   return (
-    <section className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] backdrop-blur-2xl shadow-[0_24px_100px_rgba(0,0,0,0.35)] p-4 md:p-6 space-y-5 max-h-[46vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 md:p-6">
+      <button className="absolute inset-0 bg-black/72 backdrop-blur-md" onClick={onClose} aria-label="Close prompt store" />
+      <section className="relative w-full max-w-6xl rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] backdrop-blur-2xl shadow-[0_24px_100px_rgba(0,0,0,0.35)] p-4 md:p-6 space-y-5 max-h-[82vh] overflow-hidden flex flex-col">
       <div className="flex items-start justify-between gap-4 flex-wrap shrink-0">
         <div>
           <p className="text-[11px] uppercase tracking-[0.35em] text-white/40 mb-2">{t(locale, 'promptStore')}</p>
           <h3 className="text-lg md:text-2xl text-white font-light tracking-wide">{t(locale, 'promptStoreDesc')}</h3>
         </div>
-        <div className="rounded-full border border-amber-200/20 bg-amber-100/10 px-3 py-1 text-[11px] text-amber-100/80">
-          {locale === 'zh' ? '按风格 / 构图 / 光线精心策划' : 'Curated by style / composition / light'}
+        <div className="flex items-center gap-2">
+          <div className="rounded-full border border-amber-200/20 bg-amber-100/10 px-3 py-1 text-[11px] text-amber-100/80">
+            {locale === 'zh' ? '按风格 / 构图 / 光线精心策划' : 'Curated by style / composition / light'}
+          </div>
+          <button onClick={onClose} className="rounded-full border border-white/10 bg-white/6 p-2 text-white/65 hover:bg-white/10 hover:text-white" aria-label={locale === 'zh' ? '关闭标签商店' : 'Close prompt store'}>
+            <X className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
@@ -188,6 +195,7 @@ export function PromptStore({ onApplyPrompt }: { onApplyPrompt: (prompt: string)
           </div>
         </div>
       </div>
-    </section>
+      </section>
+    </div>
   );
 }
