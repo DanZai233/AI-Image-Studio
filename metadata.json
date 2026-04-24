@@ -1,0 +1,6 @@
+{
+  "name": "AI Image Studio",
+  "description": "An elegant AI interface for image generation, vision analysis, and rich chatting with customizable OpenAI endpoints.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
