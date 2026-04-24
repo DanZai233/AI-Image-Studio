@@ -314,6 +314,37 @@ const AppStateContext = createContext<{
 }>({ state: initialState, dispatch: () => null });
 
 const STORAGE_KEY = 'lumina-atelier-state';
+const MAX_PERSISTED_ASSETS_PER_WORKSPACE = 12;
+const MAX_PERSISTED_DATA_URL_LENGTH = 450000;
+const MAX_PERSISTED_MESSAGES_PER_WORKSPACE = 80;
+
+function createPersistableAssets(state: AppState) {
+  const workspaceIds = state.workspaces.map((workspace) => workspace.id);
+  const persistedEntries = workspaceIds.flatMap((workspaceId) => {
+    const workspaceAssets = Object.entries(state.assets)
+      .filter(([, asset]) => asset.workspaceId === workspaceId)
+      .sort((a, b) => b[1].createdAt - a[1].createdAt)
+      .slice(0, MAX_PERSISTED_ASSETS_PER_WORKSPACE)
+      .filter(([, asset]) => typeof asset.url === 'string' && asset.url.length <= MAX_PERSISTED_DATA_URL_LENGTH);
+    return workspaceAssets;
+  });
+
+  return Object.fromEntries(persistedEntries);
+}
+
+function createPersistableMessages(state: AppState, persistedAssetIds: Set<string>) {
+  const workspaceIds = state.workspaces.map((workspace) => workspace.id);
+  return workspaceIds.flatMap((workspaceId) => {
+    const workspaceMessages = state.messages
+      .filter((message) => message.workspaceId === workspaceId)
+      .slice(-MAX_PERSISTED_MESSAGES_PER_WORKSPACE)
+      .map((message) => ({
+        ...message,
+        imageAssets: (message.imageAssets || []).filter((assetId) => persistedAssetIds.has(assetId)),
+      }));
+    return workspaceMessages;
+  });
+}
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -332,13 +363,16 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     try {
+      const persistedAssets = createPersistableAssets(state);
+      const persistedAssetIds = new Set(Object.keys(persistedAssets));
+      const persistedMessages = createPersistableMessages(state, persistedAssetIds);
       localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({
           settings: sanitizePersistedSettings(state.settings),
           locale: state.locale,
-          messages: state.messages,
-          assets: state.assets,
+          messages: persistedMessages,
+          assets: persistedAssets,
           workspaces: state.workspaces,
           activeWorkspaceId: state.activeWorkspaceId,
           promptBuilder: {

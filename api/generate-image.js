@@ -8,7 +8,7 @@ function normalizeReferenceImages(referenceImages = []) {
   if (!Array.isArray(referenceImages)) return [];
   return referenceImages
     .filter((item) => item && typeof item.url === 'string' && item.url.startsWith('data:image/'))
-    .slice(0, 4)
+    .slice(0, 3)
     .map((item) => ({ type: 'input_image', image_url: item.url }));
 }
 
@@ -25,8 +25,34 @@ function shouldFallbackToText(response, data) {
     message.includes('unsupported image') ||
     message.includes('unsupported multimodal') ||
     message.includes('does not support image') ||
-    message.includes('invalid prompt format')
+    message.includes('invalid prompt format') ||
+    message.includes('unknown parameter')
   );
+}
+
+function buildResponsesInput(promptText, multimodalReferences) {
+  return [
+    {
+      role: 'user',
+      content: [{ type: 'input_text', text: promptText }, ...multimodalReferences],
+    },
+  ];
+}
+
+function extractImageFromResponsesPayload(data) {
+  const output = Array.isArray(data?.output) ? data.output : [];
+  for (const item of output) {
+    if (!Array.isArray(item?.content)) continue;
+    for (const content of item.content) {
+      if (content?.type === 'output_text' && typeof content?.text === 'string' && content.text.startsWith('data:image/')) {
+        return content.text;
+      }
+      if (content?.type === 'image_generation_call' && content?.result) {
+        return content.result.startsWith('data:image/') ? content.result : `data:image/png;base64,${content.result}`;
+      }
+    }
+  }
+  return null;
 }
 
 export default async function handler(req, res) {
@@ -40,29 +66,8 @@ export default async function handler(req, res) {
     const multimodalReferences = normalizeReferenceImages(referenceImages);
     const promptText = [prompt, fallbackContext].filter(Boolean).join('\n\n');
 
-    const primaryPayload = {
-      model: provider.imageModel,
-      prompt: multimodalReferences.length
-        ? [{ type: 'input_text', text: promptText }, ...multimodalReferences]
-        : promptText,
-      n: 1,
-      size: '1024x1024',
-      response_format: 'b64_json',
-    };
-
-    let response = await fetch(`${provider.endpoint}/images/generations`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${provider.apiKey}`,
-      },
-      body: JSON.stringify(primaryPayload),
-    });
-
-    let data = await response.json().catch(() => ({}));
-
-    if (!response.ok && multimodalReferences.length && shouldFallbackToText(response, data)) {
-      response = await fetch(`${provider.endpoint}/images/generations`, {
+    const requestResponses = async (withImages) => {
+      const response = await fetch(`${provider.endpoint}/responses`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -70,20 +75,31 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           model: provider.imageModel,
-          prompt: promptText,
-          n: 1,
-          size: '1024x1024',
-          response_format: 'b64_json',
+          input: buildResponsesInput(promptText, withImages ? multimodalReferences : []),
+          modalities: ['image'],
         }),
       });
-      data = await response.json().catch(() => ({}));
+
+      const data = await response.json().catch(() => ({}));
+      return { response, data };
+    };
+
+    let { response, data } = await requestResponses(multimodalReferences.length > 0);
+
+    if (!response.ok && multimodalReferences.length && shouldFallbackToText(response, data)) {
+      ({ response, data } = await requestResponses(false));
     }
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: data.error?.message || data.error || 'Image generation failed' });
+      return res.status(response.status).json({ error: data.error?.message || data.error || 'Upstream request failed' });
     }
 
-    return res.status(200).json({ image: `data:image/png;base64,${data.data?.[0]?.b64_json || ''}` });
+    const image = extractImageFromResponsesPayload(data);
+    if (!image) {
+      return res.status(502).json({ error: 'Upstream response did not include an image result' });
+    }
+
+    return res.status(200).json({ image });
   } catch (error) {
     return res.status(500).json({ error: error.message || 'Image generation failed' });
   }
