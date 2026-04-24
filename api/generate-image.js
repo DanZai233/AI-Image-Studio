@@ -55,6 +55,26 @@ function extractImageFromResponsesPayload(data) {
   return null;
 }
 
+function extractImageFromImagesPayload(data) {
+  const b64 = data?.data?.[0]?.b64_json;
+  return typeof b64 === 'string' && b64 ? `data:image/png;base64,${b64}` : null;
+}
+
+function extractImageFromChatPayload(data) {
+  const message = data?.choices?.[0]?.message;
+  const content = Array.isArray(message?.content) ? message.content : [];
+  for (const item of content) {
+    if (item?.type === 'image_url' && item?.image_url?.url) {
+      return item.image_url.url;
+    }
+  }
+  return null;
+}
+
+function getErrorMessage(data, fallback) {
+  return data?.error?.message || data?.error || fallback;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -81,26 +101,111 @@ export default async function handler(req, res) {
       });
 
       const data = await response.json().catch(() => ({}));
-      return { response, data };
+      return {
+        response,
+        data,
+        image: extractImageFromResponsesPayload(data),
+        mode: withImages ? 'responses-multimodal' : 'responses-text',
+      };
     };
 
-    let { response, data } = await requestResponses(multimodalReferences.length > 0);
+    const requestImagesGeneration = async () => {
+      const response = await fetch(`${provider.endpoint}/images/generations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${provider.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: provider.imageModel,
+          prompt: promptText,
+          n: 1,
+          size: '1024x1024',
+          response_format: 'b64_json',
+        }),
+      });
 
-    if (!response.ok && multimodalReferences.length && shouldFallbackToText(response, data)) {
-      ({ response, data } = await requestResponses(false));
+      const data = await response.json().catch(() => ({}));
+      return {
+        response,
+        data,
+        image: extractImageFromImagesPayload(data),
+        mode: 'images-generations-text',
+      };
+    };
+
+    const requestChatCompletionsImage = async () => {
+      const response = await fetch(`${provider.endpoint}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${provider.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: provider.imageModel,
+          messages: [
+            {
+              role: 'user',
+              content: promptText,
+            },
+          ],
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      return {
+        response,
+        data,
+        image: extractImageFromChatPayload(data),
+        mode: 'chat-completions-image',
+      };
+    };
+
+    const attempts = [];
+
+    const firstAttempt = await requestResponses(multimodalReferences.length > 0);
+    attempts.push({ mode: firstAttempt.mode, status: firstAttempt.response.status, error: getErrorMessage(firstAttempt.data, '') });
+
+    if (firstAttempt.response.ok && firstAttempt.image) {
+      res.setHeader('X-Lumina-Upstream-Mode', firstAttempt.mode);
+      return res.status(200).json({ image: firstAttempt.image, debug: attempts });
     }
 
-    if (!response.ok) {
-      return res.status(response.status).json({ error: data.error?.message || data.error || 'Upstream request failed' });
+    if (
+      firstAttempt.response.ok ||
+      !multimodalReferences.length ||
+      !shouldFallbackToText(firstAttempt.response, firstAttempt.data)
+    ) {
+      const secondAttempt = await requestResponses(false);
+      attempts.push({ mode: secondAttempt.mode, status: secondAttempt.response.status, error: getErrorMessage(secondAttempt.data, '') });
+      if (secondAttempt.response.ok && secondAttempt.image) {
+        res.setHeader('X-Lumina-Upstream-Mode', secondAttempt.mode);
+        return res.status(200).json({ image: secondAttempt.image, debug: attempts });
+      }
     }
 
-    const image = extractImageFromResponsesPayload(data);
-    if (!image) {
-      return res.status(502).json({ error: 'Upstream response did not include an image result' });
+    const imageGenerationAttempt = await requestImagesGeneration();
+    attempts.push({ mode: imageGenerationAttempt.mode, status: imageGenerationAttempt.response.status, error: getErrorMessage(imageGenerationAttempt.data, '') });
+    if (imageGenerationAttempt.response.ok && imageGenerationAttempt.image) {
+      res.setHeader('X-Lumina-Upstream-Mode', imageGenerationAttempt.mode);
+      return res.status(200).json({ image: imageGenerationAttempt.image, debug: attempts });
     }
 
-    return res.status(200).json({ image });
+    const chatAttempt = await requestChatCompletionsImage();
+    attempts.push({ mode: chatAttempt.mode, status: chatAttempt.response.status, error: getErrorMessage(chatAttempt.data, '') });
+    if (chatAttempt.response.ok && chatAttempt.image) {
+      res.setHeader('X-Lumina-Upstream-Mode', chatAttempt.mode);
+      return res.status(200).json({ image: chatAttempt.image, debug: attempts });
+    }
+
+    const lastFailure = [chatAttempt, imageGenerationAttempt, firstAttempt].find((attempt) => !attempt.response.ok || !attempt.image) || firstAttempt;
+    res.setHeader('X-Lumina-Upstream-Mode', 'failed');
+    return res.status(lastFailure.response.status || 502).json({
+      error: getErrorMessage(lastFailure.data, 'Upstream request failed'),
+      debug: attempts,
+    });
   } catch (error) {
+    res.setHeader('X-Lumina-Upstream-Mode', 'exception');
     return res.status(500).json({ error: error.message || 'Image generation failed' });
   }
 }

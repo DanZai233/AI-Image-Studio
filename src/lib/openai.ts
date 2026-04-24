@@ -6,6 +6,11 @@ interface SharedProviderStatus {
   message?: string;
 }
 
+interface ImageGenerationResponse {
+  image: string;
+  debug?: string;
+}
+
 async function apiRequest<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(path, {
     method: 'POST',
@@ -18,10 +23,18 @@ async function apiRequest<T>(path: string, body: unknown): Promise<T> {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(payload.error || payload.message || 'Request failed');
+    const debugDetails = Array.isArray(payload.debug)
+      ? ` | debug: ${payload.debug.map((item: any) => `${item.mode}:${item.status}${item.error ? `:${item.error}` : ''}`).join(' -> ')}`
+      : '';
+    throw new Error((payload.error || payload.message || 'Request failed') + debugDetails);
   }
 
-  return payload as T;
+  return {
+    ...(payload as T),
+    debug:
+      response.headers.get('x-lumina-upstream-mode') ||
+      (Array.isArray(payload.debug) ? payload.debug.map((item: any) => item.mode).join(' -> ') : undefined),
+  } as T;
 }
 
 export async function unlockSharedProvider(password: string): Promise<SharedProviderStatus> {
@@ -34,7 +47,7 @@ export async function fetchImageGeneration(
   referenceImages: ImageAsset[] = [],
   fallbackContext = '',
 ): Promise<string> {
-  const data = await apiRequest<{ image: string }>('/api/generate-image', {
+  const data = await apiRequest<ImageGenerationResponse>('/api/generate-image', {
     settings,
     prompt,
     referenceImages: referenceImages.map((asset) => ({ id: asset.id, url: asset.url, source: asset.source })),
