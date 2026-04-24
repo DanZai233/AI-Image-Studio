@@ -15,6 +15,7 @@ type Action =
   | { type: 'SET_PROMPT_BUILDER'; payload: Partial<PromptBuilderState> }
   | { type: 'RESET_PROMPT_BUILDER' }
   | { type: 'SET_RUNTIME_CONFIG'; payload: AppState['runtimeConfig'] }
+  | { type: 'SET_MOBILE_SIDEBAR_OPEN'; payload: boolean }
   | { type: 'CLEAR_HISTORY' }
   | { type: 'LOAD_STATE'; payload: Partial<AppState> };
 
@@ -42,6 +43,7 @@ const initialState: AppState = {
   locale: 'zh',
   runtimeConfig,
   promptBuilder: defaultPromptBuilder,
+  isMobileSidebarOpen: false,
 };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -81,8 +83,10 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, promptBuilder: defaultPromptBuilder };
     case 'SET_RUNTIME_CONFIG':
       return { ...state, runtimeConfig: action.payload };
+    case 'SET_MOBILE_SIDEBAR_OPEN':
+      return { ...state, isMobileSidebarOpen: action.payload };
     case 'CLEAR_HISTORY':
-      return { ...state, messages: [], assets: {}, quotedMessageId: null };
+      return { ...state, messages: [], assets: {}, quotedMessageId: null, isMobileSidebarOpen: false };
     case 'LOAD_STATE': {
       const mergedSettings = { ...defaultSettings, ...(action.payload.settings ?? {}) };
       const mergedPromptBuilder = { ...defaultPromptBuilder, ...(action.payload.promptBuilder ?? {}) };
@@ -92,6 +96,7 @@ function reducer(state: AppState, action: Action): AppState {
         settings: mergedSettings,
         promptBuilder: mergedPromptBuilder,
         runtimeConfig,
+        isMobileSidebarOpen: false,
       };
     }
     default:

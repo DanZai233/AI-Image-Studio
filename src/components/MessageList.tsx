@@ -15,7 +15,7 @@ export function MessageList() {
 
   if (state.messages.length === 0) {
     return (
-      <div className="flex-1 overflow-y-auto w-full max-w-6xl mx-auto px-4 md:px-8 py-10">
+      <div className="flex-1 min-h-0 overflow-y-auto w-full max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-10">
         <div className="rounded-[36px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(216,180,254,0.15),transparent_35%),rgba(255,255,255,0.04)] p-8 md:p-12 shadow-[0_30px_120px_rgba(0,0,0,0.35)] backdrop-blur-2xl">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] uppercase tracking-[0.32em] text-white/45">
@@ -64,7 +64,7 @@ export function MessageList() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto w-full max-w-5xl mx-auto px-4 md:px-8 scroll-smooth">
+    <div className="flex-1 min-h-0 overflow-y-auto w-full max-w-5xl mx-auto px-4 md:px-8 scroll-smooth">
       <div className="py-8 space-y-1">
         {state.messages.map((message) => (
           <MessageItem key={message.id} message={message} />

@@ -87,7 +87,7 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
   const quotedMessage = state.quotedMessageId ? state.messages.find((m) => m.id === state.quotedMessageId) : null;
 
   return (
-    <div className="relative w-full max-w-6xl mx-auto px-4 md:px-8 pb-8 mt-auto shrink-0">
+    <div className="relative w-full max-w-6xl mx-auto px-4 md:px-8 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-8 pt-2 mt-auto shrink-0">
       {state.inputMode === 'image' && <PromptStore onApplyPrompt={(prompt) => setText(prompt)} />}
 
       <div className="mt-5 rounded-[30px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(217,119,255,0.18),transparent_28%),radial-gradient(circle_at_top_right,rgba(251,191,36,0.12),transparent_25%),rgba(16,16,18,0.9)] p-3 md:p-4 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl relative overflow-hidden">

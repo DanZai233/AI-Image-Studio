@@ -86,4 +86,5 @@ export type AppState = {
   locale: Locale;
   runtimeConfig: RuntimeConfig;
   promptBuilder: PromptBuilderState;
+  isMobileSidebarOpen: boolean;
 };
