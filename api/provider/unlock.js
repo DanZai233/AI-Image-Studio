@@ -1,4 +1,8 @@
-import { getPublicRuntimeConfig, resolveProvider } from './_shared/provider.js';
+import { getPublicRuntimeConfig, resolveProvider } from '../_shared/provider.js';
+
+export const config = {
+  runtime: 'nodejs',
+};
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
