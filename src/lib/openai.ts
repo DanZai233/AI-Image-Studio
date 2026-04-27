@@ -1,4 +1,4 @@
-import { AIModelSettings, ImageAsset } from '../types';
+import { AIModelSettings, ContextSnapshot, ImageAsset } from '../types';
 
 interface SharedProviderStatus {
   ok: boolean;
@@ -9,6 +9,14 @@ interface SharedProviderStatus {
 interface ImageGenerationResponse {
   image: string;
   debug?: string;
+  contextSnapshot?: ContextSnapshot;
+}
+
+interface ImageGenerationContextMessage {
+  id: string;
+  content?: string;
+  mode: 'chat' | 'image';
+  imageAssets?: string[];
 }
 
 async function apiRequest<T>(path: string, body: unknown): Promise<T> {
@@ -46,15 +54,17 @@ export async function fetchImageGeneration(
   prompt: string,
   referenceImages: ImageAsset[] = [],
   fallbackContext = '',
-): Promise<string> {
-  const data = await apiRequest<ImageGenerationResponse>('/api/generate-image', {
+  imageMode = settings.imageMode,
+  contextMessages: ImageGenerationContextMessage[] = [],
+): Promise<ImageGenerationResponse> {
+  return apiRequest<ImageGenerationResponse>('/api/generate-image', {
     settings,
     prompt,
-    referenceImages: referenceImages.map((asset) => ({ id: asset.id, url: asset.url, source: asset.source })),
+    referenceImages: referenceImages.map((asset) => ({ id: asset.id, url: asset.url, source: asset.source, prompt: asset.prompt })),
+    contextMessages,
     fallbackContext,
+    imageMode,
   });
-
-  return data.image;
 }
 
 export async function* fetchChatCompletionStream(

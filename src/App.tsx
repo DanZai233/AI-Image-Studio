@@ -21,10 +21,21 @@ import {
 } from 'lucide-react';
 import { generateId, cn } from './lib/utils';
 import { fetchImageGeneration, fetchChatCompletionStream } from './lib/openai';
-import { t } from './lib/i18n';
+import { t, tf } from './lib/i18n';
 import { promptPresets, tagDefinitions } from './lib/promptLibrary';
+import { ContextSnapshot } from './types';
 
-function SidebarContent({ onCloseMobile }: { onCloseMobile?: () => void }) {
+const IMAGE_CONTEXT_MESSAGE_LIMIT = 6;
+const IMAGE_CONTEXT_CHAR_LIMIT = 220;
+const IMAGE_CONTEXT_ASSET_LIMIT = 4;
+
+function SidebarContent({
+  imageContextSnapshot,
+  onCloseMobile,
+}: {
+  imageContextSnapshot: ContextSnapshot | null;
+  onCloseMobile?: () => void;
+}) {
   const { state, dispatch } = useAppStore();
   const locale = state.locale;
   const activeWorkspace = state.workspaces.find((workspace) => workspace.id === state.activeWorkspaceId) || state.workspaces[0];
@@ -184,6 +195,27 @@ function SidebarContent({ onCloseMobile }: { onCloseMobile?: () => void }) {
               ? `当前工作区已保存 ${workspaceMessages.length} 条消息与 ${assetList.length} 张图片；聊天和生成都会默认带上这些上下文。`
               : `This workspace keeps ${workspaceMessages.length} messages and ${assetList.length} images; chat and generation automatically reuse them as context.`}
           </p>
+          <div className="mt-4 rounded-[22px] border border-fuchsia-300/10 bg-fuchsia-300/5 p-4">
+            <div className="text-[11px] uppercase tracking-[0.24em] text-fuchsia-100/65 mb-2">{t(locale, 'contextPreviewTitle')}</div>
+            <p className="text-sm text-white/62 leading-6">{t(locale, 'contextPreviewHint')}</p>
+            <div className="mt-3 text-xs text-white/45 leading-6">
+              {tf(locale, 'contextPreviewStats', {
+                messages: imageContextSnapshot?.messageCount || Math.min(workspaceMessages.length, IMAGE_CONTEXT_MESSAGE_LIMIT),
+                images: imageContextSnapshot?.imageCount || Math.min(assetList.length, IMAGE_CONTEXT_ASSET_LIMIT),
+                modes: (imageContextSnapshot?.modes || ['chat', 'image'])
+                  .map((mode) => (mode === 'chat' ? t(locale, 'contextModeChat') : t(locale, 'contextModeImage')))
+                  .join(' / '),
+              })}
+            </div>
+            <div className="mt-2 text-xs text-white/38 leading-6">
+              {imageContextSnapshot?.clipped ?? workspaceMessages.length > IMAGE_CONTEXT_MESSAGE_LIMIT
+                ? t(locale, 'contextPreviewClipped')
+                : t(locale, 'contextPreviewRaw')}
+            </div>
+            <div className="mt-3 rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-xs text-white/52 leading-6">
+              {t(locale, 'workspaceContinuityLabel')} · {t(locale, 'workspaceContinuityHint')}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -240,6 +272,7 @@ function MainApp() {
   const { state, dispatch } = useAppStore();
   const [showSettings, setShowSettings] = React.useState(false);
   const [showSidebar, setShowSidebar] = React.useState(true);
+  const [imageContextSnapshot, setImageContextSnapshot] = React.useState<ContextSnapshot | null>(null);
   const locale = state.locale;
   const activeWorkspace = state.workspaces.find((workspace) => workspace.id === state.activeWorkspaceId) || state.workspaces[0];
   const workspaceMessages = state.messages.filter((message) => message.workspaceId === state.activeWorkspaceId);
@@ -253,6 +286,58 @@ function MainApp() {
 
   const selectedPreset = promptPresets.find((preset) => preset.id === state.promptBuilder.selectedPresetId) || null;
   const selectedTags = tagDefinitions.filter((tag) => state.promptBuilder.selectedTagIds.includes(tag.id));
+
+  const buildImageGenerationContext = (nextUserMessage?: { id: string; content: string; imageAssets: string[] }): ContextSnapshot => {
+    const candidateMessages = nextUserMessage ? [...workspaceMessages, {
+      id: nextUserMessage.id,
+      role: 'user' as const,
+      content: nextUserMessage.content,
+      mode: 'image' as const,
+      imageAssets: nextUserMessage.imageAssets,
+      timestamp: Date.now(),
+      workspaceId: state.activeWorkspaceId,
+    }] : [...workspaceMessages];
+
+    const recentMessages = candidateMessages.slice(-IMAGE_CONTEXT_MESSAGE_LIMIT);
+    const uniqueModes = Array.from(new Set(recentMessages.map((message) => message.mode)));
+    const imageCueLines: string[] = [];
+    const messageLines = recentMessages.map((message) => {
+      const clippedContent = (message.content || '').trim().replace(/\s+/g, ' ').slice(0, IMAGE_CONTEXT_CHAR_LIMIT);
+      const referencedAssets = (message.imageAssets || [])
+        .map((assetId) => state.assets[assetId])
+        .filter(Boolean)
+        .slice(0, IMAGE_CONTEXT_ASSET_LIMIT);
+
+      referencedAssets.forEach((asset) => {
+        imageCueLines.push(`@${asset.id}${asset.prompt ? `: ${asset.prompt.slice(0, 120)}` : ''}`);
+      });
+
+      return `${message.role === 'user' ? 'User' : 'Assistant'} (${message.mode}): ${clippedContent || '(empty)'}${referencedAssets.length ? ` [images: ${referencedAssets.map((asset) => `@${asset.id}`).join(', ')}]` : ''}`;
+    });
+
+    const uniqueImageCues = Array.from(new Set(imageCueLines)).slice(0, IMAGE_CONTEXT_ASSET_LIMIT);
+    const summaryParts = [
+      locale === 'zh'
+        ? '以下是当前工作区最近的关键创作上下文，请延续这些视觉线索、构图倾向与语义约束。'
+        : 'Below is the latest high-signal workspace context. Continue these visual cues, composition tendencies, and semantic constraints.',
+      ...messageLines,
+      uniqueImageCues.length
+        ? `${locale === 'zh' ? '重点图像线索' : 'Key image cues'}: ${uniqueImageCues.join(' | ')}`
+        : '',
+    ].filter(Boolean);
+
+    const originalTextLength = candidateMessages.map((message) => (message.content || '').trim().length).reduce((sum, value) => sum + value, 0);
+    const summary = summaryParts.join('\n');
+    const clipped = candidateMessages.length > recentMessages.length || originalTextLength > summary.length;
+
+    return {
+      summary,
+      messageCount: recentMessages.length,
+      imageCount: uniqueImageCues.length,
+      clipped,
+      modes: uniqueModes.length ? uniqueModes : ['image'],
+    };
+  };
 
   const buildWorkspaceContextMessages = (nextUserMessage?: { id: string; content: string; imageAssets: string[] }) => {
     const baseMessages = [...workspaceMessages];
@@ -333,24 +418,25 @@ function MainApp() {
 
         try {
           const referenceAssets = referencedAssets.map((assetId) => state.assets[assetId]).filter(Boolean);
-          const fallbackContext = [
-            locale === 'zh'
-              ? '以下是当前工作区最近的创作摘要与参考图线索，请延续这些上下文与视觉线索来完成新的图片生成。'
-              : 'The following workspace summary contains recent creative cues and reference-image signals. Continue those context cues and visual continuity for the next image generation.',
-            ...workspaceMessages.slice(-6).map((message) => {
-              const referenced = (message.imageAssets || [])
-                .map((assetId) => state.assets[assetId])
-                .filter(Boolean)
-                .map((asset) => `${asset.id}${asset.prompt ? `: ${asset.prompt}` : ''}`)
-                .join(', ');
-              const clippedContent = (message.content || '').trim().slice(0, 240);
-              return `${message.role === 'user' ? 'User' : 'Assistant'}: ${clippedContent}${referenced ? ` [images: ${referenced}]` : ''}`;
-            }),
-          ]
-            .filter(Boolean)
-            .join('\n');
+          const contextSnapshot = buildImageGenerationContext({ id: userMsgId, content: text, imageAssets: referencedAssets });
+          const fallbackContext = contextSnapshot.summary;
 
-          const b64Url = await fetchImageGeneration(settings, text, referenceAssets, fallbackContext);
+          const requestedImageMode = settings.imageMode === 'auto' ? (referenceAssets.length > 0 ? 'edit' : 'generate') : settings.imageMode;
+          const generationResult = await fetchImageGeneration(
+            settings,
+            text,
+            referenceAssets,
+            fallbackContext,
+            requestedImageMode,
+            workspaceMessages.slice(-IMAGE_CONTEXT_MESSAGE_LIMIT).map((message) => ({
+              id: message.id,
+              content: message.content,
+              mode: message.mode,
+              imageAssets: message.imageAssets || [],
+            })),
+          );
+          const b64Url = generationResult.image;
+          setImageContextSnapshot(generationResult.contextSnapshot || contextSnapshot);
           const imgId = generateId('IMG_');
 
           dispatch({ type: 'REMOVE_MESSAGE', payload: tempMsgId });
@@ -436,7 +522,7 @@ function MainApp() {
         )}
       >
         <div className="h-full min-h-0 w-full">
-          <SidebarContent />
+          <SidebarContent imageContextSnapshot={imageContextSnapshot} />
         </div>
       </aside>
 
@@ -444,7 +530,7 @@ function MainApp() {
         <div className="fixed inset-0 z-50 md:hidden">
           <button className="absolute inset-0 bg-black/72 backdrop-blur-md" onClick={closeMobileSidebar} aria-label="Close sidebar" />
           <aside className="absolute inset-y-0 left-0 w-[88vw] max-w-sm border-r border-white/10 bg-[#0d0c12]/95 shadow-[0_30px_120px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
-            <SidebarContent onCloseMobile={closeMobileSidebar} />
+            <SidebarContent imageContextSnapshot={imageContextSnapshot} onCloseMobile={closeMobileSidebar} />
           </aside>
         </div>
       )}

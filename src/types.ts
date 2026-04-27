@@ -1,5 +1,6 @@
 export type Locale = 'zh' | 'en';
 export type InputMode = 'chat' | 'image';
+export type ImageModeStrategy = 'auto' | 'edit' | 'generate';
 export type VisualStyleKey =
   | 'cinematic'
   | 'editorial'
@@ -20,6 +21,7 @@ export interface AIModelSettings {
   endpoint: string;
   chatModel: string;
   imageModel: string;
+  imageMode: ImageModeStrategy;
   useSharedProvider: boolean;
   sharedPassword: string;
 }
@@ -32,6 +34,14 @@ export interface RuntimeConfig {
   supportEmail: string;
   imageReferenceEnabled: boolean;
   imageReferenceHint: string;
+}
+
+export interface ContextSnapshot {
+  summary: string;
+  messageCount: number;
+  imageCount: number;
+  clipped: boolean;
+  modes: Array<'chat' | 'image'>;
 }
 
 export interface ImageAsset {

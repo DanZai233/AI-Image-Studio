@@ -3,6 +3,7 @@ import { X, ShieldCheck, KeyRound, Globe2, ImagePlus } from 'lucide-react';
 import { useAppStore } from '../lib/store';
 import { t } from '../lib/i18n';
 import { unlockSharedProvider } from '../lib/openai';
+import { ImageModeStrategy } from '../types';
 
 export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { state, dispatch } = useAppStore();
@@ -20,6 +21,10 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
 
   const handleFieldChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     dispatch({ type: 'SET_SETTINGS', payload: { [e.target.name]: e.target.value } });
+  };
+
+  const handleImageModeChange = (imageMode: ImageModeStrategy) => {
+    dispatch({ type: 'SET_SETTINGS', payload: { imageMode } });
   };
 
   const handleUnlock = async () => {
@@ -127,6 +132,35 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
               <p className="text-sm text-white/58 leading-6">
                 {runtimeConfig.imageReferenceHint || t(locale, 'referenceImageHint')}
               </p>
+              <div className="mt-4 grid grid-cols-1 gap-2">
+                {[
+                  {
+                    value: 'auto',
+                    label: locale === 'zh' ? '自动判断' : 'Auto detect',
+                    description: locale === 'zh' ? '有参考图时优先走 /images/edits，没有参考图时走 /images/generations。' : 'Use /images/edits when reference images exist, otherwise use /images/generations.',
+                  },
+                  {
+                    value: 'edit',
+                    label: locale === 'zh' ? '强制参考图编辑' : 'Force image edit',
+                    description: locale === 'zh' ? '始终优先调用 /images/edits，最接近 Cherry Studio 的参考图处理方式。' : 'Always prefer /images/edits, closest to Cherry Studio reference-image handling.',
+                  },
+                  {
+                    value: 'generate',
+                    label: locale === 'zh' ? '强制纯文本生成' : 'Force text generation',
+                    description: locale === 'zh' ? '始终调用 /images/generations，忽略参考图直传。' : 'Always use /images/generations and skip direct reference-image upload.',
+                  },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => handleImageModeChange(option.value as ImageModeStrategy)}
+                    className={`rounded-2xl border px-4 py-3 text-left transition ${settings.imageMode === option.value ? 'border-fuchsia-300/30 bg-fuchsia-400/10' : 'border-white/8 bg-white/[0.03] hover:bg-white/8'}`}
+                  >
+                    <div className="text-sm text-white">{option.label}</div>
+                    <div className="mt-1 text-xs text-white/45 leading-5">{option.description}</div>
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="space-y-3 pt-3">

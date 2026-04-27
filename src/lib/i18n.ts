@@ -88,6 +88,15 @@ export const translations = {
     tagGroupMaterial: '材质',
     referenceImageGeneration: '参考图生成',
     referenceImageHint: '当上游图片模型支持多模态 prompt 时，引用图片会直接透传；否则会自动退化为上下文文本引导。',
+    contextPreviewTitle: '上下文策略',
+    contextPreviewHint: '像 Cherry Studio 一样，只截取最近的关键消息与参考图线索，避免把整个工作区原样塞给模型。',
+    contextPreviewStats: '最近 {messages} 条消息 · {images} 张图像线索 · {modes}',
+    contextPreviewClipped: '已做裁剪压缩，减少上下文噪音。',
+    contextPreviewRaw: '当前上下文较短，会完整传递。',
+    contextModeChat: '聊天',
+    contextModeImage: '绘图',
+    workspaceContinuityLabel: '工作区连续性',
+    workspaceContinuityHint: '系统会优先沿用最近的视觉线索、引用图片和生成记录，而不是回放全部历史。',
     workspaceDeleteConfirmPrefix: '确认删除工作区“',
     workspaceDeleteConfirmSuffix: '”？该工作区里的聊天和图片都会从本地持久化中移除。',
   },
@@ -178,6 +187,15 @@ export const translations = {
     tagGroupMaterial: 'Material',
     referenceImageGeneration: 'Reference image generation',
     referenceImageHint: 'When the upstream image model supports multimodal prompts, referenced images are forwarded directly; otherwise the app falls back to contextual text guidance.',
+    contextPreviewTitle: 'Context strategy',
+    contextPreviewHint: 'Like Cherry Studio, only the latest high-signal messages and image cues are forwarded instead of replaying the full workspace transcript.',
+    contextPreviewStats: 'Last {messages} messages · {images} image cues · {modes}',
+    contextPreviewClipped: 'Context was clipped and compressed to reduce noise.',
+    contextPreviewRaw: 'Context is short enough to send in full.',
+    contextModeChat: 'chat',
+    contextModeImage: 'image',
+    workspaceContinuityLabel: 'Workspace continuity',
+    workspaceContinuityHint: 'The app prefers recent visual cues, references, and generation history instead of replaying every old turn.',
     workspaceDeleteConfirmPrefix: 'Delete workspace "',
     workspaceDeleteConfirmSuffix: '"? Its chat history and images will be removed from local persistence.',
   },
@@ -185,4 +203,8 @@ export const translations = {
 
 export function t(locale: Locale, key: keyof typeof translations.zh): string {
   return translations[locale][key] ?? translations.zh[key] ?? key;
+}
+
+export function tf(locale: Locale, key: keyof typeof translations.zh, vars: Record<string, string | number>): string {
+  return Object.entries(vars).reduce((result, [name, value]) => result.split(`{${name}}`).join(String(value)), t(locale, key));
 }

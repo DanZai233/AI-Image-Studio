@@ -4,18 +4,24 @@ export const config = {
   runtime: 'nodejs',
 };
 
+const REQUEST_TIMEOUT_MS = 30000;
+
 function normalizeReferenceImages(referenceImages = []) {
   if (!Array.isArray(referenceImages)) return [];
   return referenceImages
     .filter((item) => item && typeof item.url === 'string' && item.url.startsWith('data:image/'))
     .slice(0, 3)
-    .map((item) => ({ type: 'input_image', image_url: item.url }));
+    .map((item) => item.url);
 }
 
 function shouldFallbackToText(response, data) {
   if (!response || response.ok) return false;
-  if (!response.status || response.status >= 500 || response.status === 401 || response.status === 403 || response.status === 429) {
+  if (!response.status || response.status === 401 || response.status === 403 || response.status === 429) {
     return false;
+  }
+
+  if (response.status >= 500) {
+    return true;
   }
 
   const message = String(data?.error?.message || data?.error || '').toLowerCase();
@@ -26,53 +32,82 @@ function shouldFallbackToText(response, data) {
     message.includes('unsupported multimodal') ||
     message.includes('does not support image') ||
     message.includes('invalid prompt format') ||
-    message.includes('unknown parameter')
+    message.includes('unknown parameter') ||
+    message.includes('reference image') ||
+    message.includes('invalid image') ||
+    message.includes('image too large')
   );
-}
-
-function buildResponsesInput(promptText, multimodalReferences) {
-  return [
-    {
-      role: 'user',
-      content: [{ type: 'input_text', text: promptText }, ...multimodalReferences],
-    },
-  ];
-}
-
-function extractImageFromResponsesPayload(data) {
-  const output = Array.isArray(data?.output) ? data.output : [];
-  for (const item of output) {
-    if (!Array.isArray(item?.content)) continue;
-    for (const content of item.content) {
-      if (content?.type === 'output_text' && typeof content?.text === 'string' && content.text.startsWith('data:image/')) {
-        return content.text;
-      }
-      if (content?.type === 'image_generation_call' && content?.result) {
-        return content.result.startsWith('data:image/') ? content.result : `data:image/png;base64,${content.result}`;
-      }
-    }
-  }
-  return null;
 }
 
 function extractImageFromImagesPayload(data) {
   const b64 = data?.data?.[0]?.b64_json;
-  return typeof b64 === 'string' && b64 ? `data:image/png;base64,${b64}` : null;
-}
-
-function extractImageFromChatPayload(data) {
-  const message = data?.choices?.[0]?.message;
-  const content = Array.isArray(message?.content) ? message.content : [];
-  for (const item of content) {
-    if (item?.type === 'image_url' && item?.image_url?.url) {
-      return item.image_url.url;
-    }
-  }
-  return null;
+  const url = data?.data?.[0]?.url;
+  if (typeof b64 === 'string' && b64) return `data:image/png;base64,${b64}`;
+  return typeof url === 'string' && url ? url : null;
 }
 
 function getErrorMessage(data, fallback) {
   return data?.error?.message || data?.error || fallback;
+}
+
+async function safeFetch(url, options) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } catch (error) {
+    return {
+      ok: false,
+      status: error?.name === 'AbortError' ? 504 : 502,
+      json: async () => ({ error: error?.message || 'fetch failed' }),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function safeFetchJson(url, options) {
+  const response = await safeFetch(url, options);
+  const data = await response.json().catch(() => ({}));
+  return { response, data };
+}
+
+function buildEditFormData({ promptText, imageModel, imageUrls }) {
+  const formData = new FormData();
+  formData.append('prompt', promptText);
+  formData.append('model', imageModel);
+
+  imageUrls.forEach((dataUrl, index) => {
+    const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/);
+    if (!match) return;
+    const [, mimeType, base64Data] = match;
+    const buffer = Buffer.from(base64Data, 'base64');
+    const blob = new Blob([buffer], { type: mimeType });
+    const ext = mimeType.split('/')[1] || 'png';
+    formData.append('image', blob, `reference-${index + 1}.${ext}`);
+  });
+
+  return formData;
+}
+
+function buildContextSnapshot({
+  summary,
+  recentMessages,
+  imageCueCount,
+  clipped,
+}) {
+  return {
+    summary,
+    messageCount: recentMessages.length,
+    imageCount: imageCueCount,
+    clipped,
+    modes: Array.from(new Set(recentMessages.map((message) => message.mode || 'image'))),
+  };
 }
 
 export default async function handler(req, res) {
@@ -81,36 +116,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { settings, prompt, referenceImages = [], fallbackContext = '' } = req.body || {};
+    const { settings, prompt, referenceImages = [], fallbackContext = '', imageMode = 'auto', contextMessages = [] } = req.body || {};
     const provider = resolveProvider(settings || {});
-    const multimodalReferences = normalizeReferenceImages(referenceImages);
+    const imageUrls = normalizeReferenceImages(referenceImages);
+    const recentMessages = Array.isArray(contextMessages) ? contextMessages.slice(-6) : [];
+    const imageCueCount = recentMessages.reduce((count, message) => count + (Array.isArray(message.imageAssets) ? Math.min(message.imageAssets.length, 4) : 0), 0);
+    const contextSnapshot = buildContextSnapshot({
+      summary: fallbackContext,
+      recentMessages,
+      imageCueCount,
+      clipped: Boolean(recentMessages.length >= 6 || fallbackContext.length > 900),
+    });
     const promptText = [prompt, fallbackContext].filter(Boolean).join('\n\n');
 
-    const requestResponses = async (withImages) => {
-      const response = await fetch(`${provider.endpoint}/responses`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${provider.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: provider.imageModel,
-          input: buildResponsesInput(promptText, withImages ? multimodalReferences : []),
-          modalities: ['image'],
-        }),
-      });
-
-      const data = await response.json().catch(() => ({}));
-      return {
-        response,
-        data,
-        image: extractImageFromResponsesPayload(data),
-        mode: withImages ? 'responses-multimodal' : 'responses-text',
-      };
-    };
-
     const requestImagesGeneration = async () => {
-      const response = await fetch(`${provider.endpoint}/images/generations`, {
+      const { response, data } = await safeFetchJson(`${provider.endpoint}/images/generations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -125,7 +145,6 @@ export default async function handler(req, res) {
         }),
       });
 
-      const data = await response.json().catch(() => ({}));
       return {
         response,
         data,
@@ -134,71 +153,53 @@ export default async function handler(req, res) {
       };
     };
 
-    const requestChatCompletionsImage = async () => {
-      const response = await fetch(`${provider.endpoint}/chat/completions`, {
+    const requestImagesEdits = async () => {
+      const formData = buildEditFormData({ promptText, imageModel: provider.imageModel, imageUrls });
+      const { response, data } = await safeFetchJson(`${provider.endpoint}/images/edits`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           Authorization: `Bearer ${provider.apiKey}`,
         },
-        body: JSON.stringify({
-          model: provider.imageModel,
-          messages: [
-            {
-              role: 'user',
-              content: promptText,
-            },
-          ],
-        }),
+        body: formData,
+        // do not set content-type manually; fetch must add multipart/form-data boundary
       });
 
-      const data = await response.json().catch(() => ({}));
       return {
         response,
         data,
-        image: extractImageFromChatPayload(data),
-        mode: 'chat-completions-image',
+        image: extractImageFromImagesPayload(data),
+        mode: 'images-edits-reference',
       };
     };
 
     const attempts = [];
+    const shouldTryEditFirst = imageUrls.length > 0 && imageMode !== 'generate';
 
-    const firstAttempt = await requestResponses(multimodalReferences.length > 0);
-    attempts.push({ mode: firstAttempt.mode, status: firstAttempt.response.status, error: getErrorMessage(firstAttempt.data, '') });
+    if (shouldTryEditFirst) {
+      const editAttempt = await requestImagesEdits();
+      attempts.push({ mode: editAttempt.mode, status: editAttempt.response.status, error: getErrorMessage(editAttempt.data, '') });
+      if (editAttempt.response.ok && editAttempt.image) {
+        res.setHeader('X-Lumina-Upstream-Mode', editAttempt.mode);
+        return res.status(200).json({ image: editAttempt.image, debug: attempts, contextSnapshot });
+      }
 
-    if (firstAttempt.response.ok && firstAttempt.image) {
-      res.setHeader('X-Lumina-Upstream-Mode', firstAttempt.mode);
-      return res.status(200).json({ image: firstAttempt.image, debug: attempts });
-    }
-
-    if (
-      firstAttempt.response.ok ||
-      !multimodalReferences.length ||
-      !shouldFallbackToText(firstAttempt.response, firstAttempt.data)
-    ) {
-      const secondAttempt = await requestResponses(false);
-      attempts.push({ mode: secondAttempt.mode, status: secondAttempt.response.status, error: getErrorMessage(secondAttempt.data, '') });
-      if (secondAttempt.response.ok && secondAttempt.image) {
-        res.setHeader('X-Lumina-Upstream-Mode', secondAttempt.mode);
-        return res.status(200).json({ image: secondAttempt.image, debug: attempts });
+      if (imageMode === 'edit' && !shouldFallbackToText(editAttempt.response, editAttempt.data)) {
+        res.setHeader('X-Lumina-Upstream-Mode', 'failed');
+        return res.status(editAttempt.response.status || 502).json({
+          error: getErrorMessage(editAttempt.data, 'Reference image edit failed'),
+          debug: attempts,
+        });
       }
     }
 
-    const imageGenerationAttempt = await requestImagesGeneration();
-    attempts.push({ mode: imageGenerationAttempt.mode, status: imageGenerationAttempt.response.status, error: getErrorMessage(imageGenerationAttempt.data, '') });
-    if (imageGenerationAttempt.response.ok && imageGenerationAttempt.image) {
-      res.setHeader('X-Lumina-Upstream-Mode', imageGenerationAttempt.mode);
-      return res.status(200).json({ image: imageGenerationAttempt.image, debug: attempts });
+    const generationAttempt = await requestImagesGeneration();
+    attempts.push({ mode: generationAttempt.mode, status: generationAttempt.response.status, error: getErrorMessage(generationAttempt.data, '') });
+    if (generationAttempt.response.ok && generationAttempt.image) {
+      res.setHeader('X-Lumina-Upstream-Mode', generationAttempt.mode);
+      return res.status(200).json({ image: generationAttempt.image, debug: attempts, contextSnapshot });
     }
 
-    const chatAttempt = await requestChatCompletionsImage();
-    attempts.push({ mode: chatAttempt.mode, status: chatAttempt.response.status, error: getErrorMessage(chatAttempt.data, '') });
-    if (chatAttempt.response.ok && chatAttempt.image) {
-      res.setHeader('X-Lumina-Upstream-Mode', chatAttempt.mode);
-      return res.status(200).json({ image: chatAttempt.image, debug: attempts });
-    }
-
-    const lastFailure = [chatAttempt, imageGenerationAttempt, firstAttempt].find((attempt) => !attempt.response.ok || !attempt.image) || firstAttempt;
+    const lastFailure = generationAttempt;
     res.setHeader('X-Lumina-Upstream-Mode', 'failed');
     return res.status(lastFailure.response.status || 502).json({
       error: getErrorMessage(lastFailure.data, 'Upstream request failed'),

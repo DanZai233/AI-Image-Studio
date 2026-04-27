@@ -44,6 +44,7 @@ const defaultSettings: AIModelSettings = {
   endpoint: 'https://api.openai.com/v1',
   chatModel: 'gpt-4o-mini',
   imageModel: 'gpt-image-1',
+  imageMode: 'auto',
   useSharedProvider: runtimeConfig.sharedProviderEnabled,
   sharedPassword: '',
 };
