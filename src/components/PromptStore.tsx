@@ -19,6 +19,7 @@ import {
   Plus,
   Trash2,
   Pencil,
+  ImagePlus,
 } from 'lucide-react';
 import { useAppStore } from '../lib/store';
 import { promptPresets, tagDefinitions } from '../lib/promptLibrary';
@@ -40,6 +41,167 @@ const groupIconMap = {
 
 const presetCategoryOrder: Array<PromptPresetCategory | 'all'> = ['all', 'portrait', 'cinematic', 'illustration', 'product', 'space'];
 const tagGroupOrder: Array<PromptTagGroup | 'all'> = ['all', 'quality', 'lighting', 'composition', 'style', 'camera', 'mood', 'material'];
+
+function CharacterEditorModal({
+  locale,
+  form,
+  isOpen,
+  onClose,
+  onChange,
+  onSave,
+  onReset,
+}: {
+  locale: 'zh' | 'en';
+  form: {
+    id: string | null;
+    name: string;
+    title: string;
+    descriptionZh: string;
+    descriptionEn: string;
+    visualPromptZh: string;
+    visualPromptEn: string;
+    stylePromptZh: string;
+    stylePromptEn: string;
+    coverImageUrl: string;
+    referenceImageUrlsText: string;
+    tagsText: string;
+  };
+  isOpen: boolean;
+  onClose: () => void;
+  onChange: (field: keyof typeof form, value: string) => void;
+  onSave: () => void;
+  onReset: () => void;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="absolute inset-0 z-[110] flex items-center justify-center p-4 md:p-6">
+      <button className="absolute inset-0 bg-black/78 backdrop-blur-md" onClick={onClose} aria-label="Close character editor" />
+      <section className="relative z-10 w-full max-w-4xl max-h-[85vh] overflow-y-auto rounded-[30px] border border-white/10 bg-[#100d16]/96 p-5 md:p-6 shadow-[0_30px_120px_rgba(0,0,0,0.45)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.32em] text-cyan-100/55">
+              {locale === 'zh' ? '人物资料编辑器' : 'Character editor'}
+            </div>
+            <h3 className="mt-2 text-xl text-white font-light">
+              {form.id ? (locale === 'zh' ? '编辑人物设定' : 'Edit character profile') : (locale === 'zh' ? '新建人物设定' : 'Create character profile')}
+            </h3>
+            <p className="mt-2 text-sm text-white/55 leading-6">
+              {locale === 'zh'
+                ? '把人物外观、风格和参考图整理成单独档案，后续可以直接多选参与生图。'
+                : 'Turn a character appearance, style, and references into a reusable profile for future image generation.'}
+            </p>
+          </div>
+          <button onClick={onClose} className="rounded-full border border-white/10 bg-white/6 p-2 text-white/55 hover:bg-white/10 hover:text-white">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="mt-6 space-y-4">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <input
+              value={form.name}
+              onChange={(e) => onChange('name', e.target.value)}
+              placeholder={locale === 'zh' ? '人物名称' : 'Character name'}
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none"
+            />
+            <input
+              value={form.title}
+              onChange={(e) => onChange('title', e.target.value)}
+              placeholder={locale === 'zh' ? '人物身份 / 角色标签' : 'Role / title'}
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none"
+            />
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <textarea
+              value={form.descriptionZh}
+              onChange={(e) => onChange('descriptionZh', e.target.value)}
+              placeholder={locale === 'zh' ? '中文简介' : 'Chinese summary'}
+              className="min-h-24 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none"
+            />
+            <textarea
+              value={form.descriptionEn}
+              onChange={(e) => onChange('descriptionEn', e.target.value)}
+              placeholder={locale === 'zh' ? '英文简介' : 'English summary'}
+              className="min-h-24 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none"
+            />
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <textarea
+              value={form.visualPromptZh}
+              onChange={(e) => onChange('visualPromptZh', e.target.value)}
+              placeholder={locale === 'zh' ? '中文外观提示词：脸、发型、服装、体型、辨识度特征' : 'Chinese appearance prompt: face, hair, outfit, body shape, signature traits'}
+              className="min-h-32 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none"
+            />
+            <textarea
+              value={form.visualPromptEn}
+              onChange={(e) => onChange('visualPromptEn', e.target.value)}
+              placeholder={locale === 'zh' ? '英文外观提示词' : 'English appearance prompt'}
+              className="min-h-32 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none"
+            />
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <textarea
+              value={form.stylePromptZh}
+              onChange={(e) => onChange('stylePromptZh', e.target.value)}
+              placeholder={locale === 'zh' ? '中文风格提示词（可选）' : 'Chinese style prompt (optional)'}
+              className="min-h-24 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none"
+            />
+            <textarea
+              value={form.stylePromptEn}
+              onChange={(e) => onChange('stylePromptEn', e.target.value)}
+              placeholder={locale === 'zh' ? '英文风格提示词（可选）' : 'English style prompt (optional)'}
+              className="min-h-24 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none"
+            />
+          </div>
+
+          <div className="rounded-[22px] border border-cyan-300/12 bg-cyan-300/6 p-4">
+            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.28em] text-cyan-50/70 mb-3">
+              <ImagePlus className="w-4 h-4" />
+              {locale === 'zh' ? '参考图与封面' : 'References and cover'}
+            </div>
+            <div className="space-y-3">
+              <input
+                value={form.coverImageUrl}
+                onChange={(e) => onChange('coverImageUrl', e.target.value)}
+                placeholder={locale === 'zh' ? '封面图 URL（可选）' : 'Cover image URL (optional)'}
+                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none"
+              />
+              <textarea
+                value={form.referenceImageUrlsText}
+                onChange={(e) => onChange('referenceImageUrlsText', e.target.value)}
+                placeholder={locale === 'zh' ? '参考图 URL，每行一条，最多 4 条' : 'Reference image URLs, one per line, up to 4'}
+                className="min-h-28 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none"
+              />
+              <input
+                value={form.tagsText}
+                onChange={(e) => onChange('tagsText', e.target.value)}
+                placeholder={locale === 'zh' ? '标签，逗号分隔（可选）' : 'Tags, comma separated (optional)'}
+                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex gap-3 flex-wrap">
+          <button
+            onClick={onSave}
+            disabled={!form.name.trim() || !form.visualPromptZh.trim() || !form.visualPromptEn.trim()}
+            className="rounded-2xl bg-cyan-200 px-4 py-3 text-sm font-semibold text-black disabled:opacity-40"
+          >
+            {form.id ? (locale === 'zh' ? '保存人物' : 'Save character') : (locale === 'zh' ? '创建人物' : 'Create character')}
+          </button>
+          <button onClick={onReset} className="rounded-2xl border border-white/10 px-4 py-3 text-sm text-white/70 hover:bg-white/6">
+            {locale === 'zh' ? '清空表单' : 'Clear form'}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
 
 export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt: string) => void; onClose: () => void }) {
   const { state, dispatch } = useAppStore();
@@ -357,6 +519,16 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 md:p-6">
       <button className="absolute inset-0 bg-black/72 backdrop-blur-md" onClick={onClose} aria-label="Close prompt store" />
       <section className="relative w-full max-w-6xl rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] backdrop-blur-2xl shadow-[0_24px_100px_rgba(0,0,0,0.35)] p-4 md:p-6 space-y-5 max-h-[82vh] overflow-hidden flex flex-col">
+        <CharacterEditorModal
+          locale={locale}
+          form={characterForm}
+          isOpen={isCharacterEditorOpen}
+          onClose={closeCharacterEditor}
+          onChange={handleCharacterFormChange}
+          onSave={saveCharacter}
+          onReset={resetCharacterForm}
+        />
+
         <div className="flex items-start justify-between gap-4 flex-wrap shrink-0">
           <div>
             <p className="text-[11px] uppercase tracking-[0.35em] text-white/40 mb-2">{t(locale, 'promptStore')}</p>
@@ -374,6 +546,37 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
 
         <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr] min-h-0 flex-1 overflow-hidden">
           <div className="space-y-4 min-h-0 overflow-y-auto pr-1">
+            <div className="rounded-[28px] border border-cyan-300/18 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),rgba(255,255,255,0.03)] p-4 md:p-5">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div className="max-w-2xl">
+                  <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.3em] text-cyan-50/70">
+                    <Users className="w-4 h-4" />
+                    {locale === 'zh' ? '人物库' : 'Character library'}
+                  </div>
+                  <h4 className="mt-2 text-lg text-white font-medium">
+                    {locale === 'zh' ? '把固定角色做成可复用的人物档案' : 'Turn recurring characters into reusable profiles'}
+                  </h4>
+                  <p className="mt-2 text-sm leading-6 text-white/58">
+                    {locale === 'zh'
+                      ? '为角色保存外观提示词、风格提示词和参考图 URL。生图时可以直接多选人物，系统会自动把这些角色带入。'
+                      : 'Save appearance prompts, style prompts, and reference image URLs. During generation you can select multiple characters and the app will inject them automatically.'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/72">
+                    {selectedCharacters.length}/3 {locale === 'zh' ? '已选人物' : 'selected'}
+                  </div>
+                  <button
+                    onClick={() => openCharacterEditor()}
+                    className="inline-flex items-center gap-2 rounded-2xl bg-cyan-200 px-4 py-3 text-sm font-semibold text-black hover:bg-cyan-100"
+                  >
+                    <Plus className="w-4 h-4" />
+                    {locale === 'zh' ? '新建人物档案' : 'Create character'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {renderCompactShelf(
               t(locale, 'favoritesShelf'),
               <Heart className="w-4 h-4" />,
@@ -440,27 +643,18 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
               {!filteredPresets.length && <p className="text-sm text-white/35">{t(locale, 'noPresetResults')}</p>}
             </div>
 
-            <div className="rounded-[26px] border border-white/8 bg-black/15 p-4 space-y-4">
+            <div className="rounded-[26px] border border-cyan-300/12 bg-cyan-300/6 p-4 space-y-4">
               <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.28em] text-white/40">
+                <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.28em] text-cyan-50/70">
                   <Users className="w-4 h-4" />
-                  {locale === 'zh' ? '人物预设' : 'Characters'}
+                  {locale === 'zh' ? '人物档案列表' : 'Character profiles'}
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-1 text-[11px] text-white/45">
-                    {filteredCharacters.length} {t(locale, 'results')}
-                  </div>
-                  <button
-                    onClick={() => openCharacterEditor()}
-                    className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1.5 text-xs text-cyan-50 hover:bg-cyan-300/16"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    {locale === 'zh' ? '新增人物' : 'New character'}
-                  </button>
+                <div className="rounded-full border border-cyan-300/18 bg-black/20 px-3 py-1 text-[11px] text-white/70">
+                  {filteredCharacters.length} {locale === 'zh' ? '个角色' : 'profiles'}
                 </div>
               </div>
 
-              <label className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+              <label className="flex items-center gap-3 rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
                 <Search className="w-4 h-4 text-white/35" />
                 <input
                   value={characterSearch}
@@ -474,9 +668,9 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
                 {filteredCharacters.map(renderCharacterCard)}
               </div>
               {!filteredCharacters.length && (
-                <p className="text-sm text-white/35">
-                  {locale === 'zh' ? '还没有人物预设。新建人物后，可通过提示词和参考图 URL 固定人设。' : 'No character preset yet. Create one with prompt details and reference image URLs.'}
-                </p>
+                <div className="rounded-[22px] border border-dashed border-white/12 bg-black/15 px-4 py-6 text-center text-sm text-white/42">
+                  {locale === 'zh' ? '还没有人物档案。点击上方“新建人物档案”开始创建。' : 'No character profiles yet. Use the button above to create your first one.'}
+                </div>
               )}
             </div>
 
@@ -595,7 +789,7 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
                 </div>
               ) : (
                 <p className="text-sm text-white/38">
-                  {locale === 'zh' ? '可多选最多 3 个人物。生图时会把人物长相、风格和参考图一并带入。' : 'Select up to 3 characters. Their appearance, style, and reference images will be merged into image generation.'}
+                  {locale === 'zh' ? '先从左侧人物档案中选择角色。系统会在生图时自动带入这些人物的外观、风格和参考图。' : 'Choose characters from the library on the left. Their appearance, style, and references will be injected automatically during generation.'}
                 </p>
               )}
             </div>
@@ -623,46 +817,6 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
                       {tag.label[locale]}
                     </button>
                   ))}
-                </div>
-              </div>
-            )}
-
-            {isCharacterEditorOpen && (
-              <div className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4 space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-[11px] uppercase tracking-[0.28em] text-white/40">
-                    {characterForm.id ? (locale === 'zh' ? '编辑人物' : 'Edit character') : (locale === 'zh' ? '新增人物' : 'New character')}
-                  </div>
-                  <button onClick={closeCharacterEditor} className="rounded-full border border-white/10 bg-white/6 p-2 text-white/50 hover:text-white">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <input value={characterForm.name} onChange={(e) => handleCharacterFormChange('name', e.target.value)} placeholder={locale === 'zh' ? '人物名称' : 'Character name'} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
-                  <input value={characterForm.title} onChange={(e) => handleCharacterFormChange('title', e.target.value)} placeholder={locale === 'zh' ? '人物身份 / 标签' : 'Role / title'} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
-                </div>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <textarea value={characterForm.descriptionZh} onChange={(e) => handleCharacterFormChange('descriptionZh', e.target.value)} placeholder={locale === 'zh' ? '中文简介' : 'Chinese summary'} className="min-h-24 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
-                  <textarea value={characterForm.descriptionEn} onChange={(e) => handleCharacterFormChange('descriptionEn', e.target.value)} placeholder={locale === 'zh' ? '英文简介' : 'English summary'} className="min-h-24 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
-                </div>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <textarea value={characterForm.visualPromptZh} onChange={(e) => handleCharacterFormChange('visualPromptZh', e.target.value)} placeholder={locale === 'zh' ? '中文人物外观提示词' : 'Chinese appearance prompt'} className="min-h-28 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
-                  <textarea value={characterForm.visualPromptEn} onChange={(e) => handleCharacterFormChange('visualPromptEn', e.target.value)} placeholder={locale === 'zh' ? '英文人物外观提示词' : 'English appearance prompt'} className="min-h-28 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
-                </div>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <textarea value={characterForm.stylePromptZh} onChange={(e) => handleCharacterFormChange('stylePromptZh', e.target.value)} placeholder={locale === 'zh' ? '中文风格提示词（可选）' : 'Chinese style prompt (optional)'} className="min-h-24 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
-                  <textarea value={characterForm.stylePromptEn} onChange={(e) => handleCharacterFormChange('stylePromptEn', e.target.value)} placeholder={locale === 'zh' ? '英文风格提示词（可选）' : 'English style prompt (optional)'} className="min-h-24 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
-                </div>
-                <input value={characterForm.coverImageUrl} onChange={(e) => handleCharacterFormChange('coverImageUrl', e.target.value)} placeholder={locale === 'zh' ? '封面图 URL（可选）' : 'Cover image URL (optional)'} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
-                <textarea value={characterForm.referenceImageUrlsText} onChange={(e) => handleCharacterFormChange('referenceImageUrlsText', e.target.value)} placeholder={locale === 'zh' ? '参考图 URL，每行一条，最多 4 条' : 'Reference image URLs, one per line, up to 4'} className="min-h-28 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
-                <input value={characterForm.tagsText} onChange={(e) => handleCharacterFormChange('tagsText', e.target.value)} placeholder={locale === 'zh' ? '标签，逗号分隔（可选）' : 'Tags, comma separated (optional)'} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
-                <div className="flex gap-3 flex-wrap">
-                  <button onClick={saveCharacter} disabled={!characterForm.name.trim() || !characterForm.visualPromptZh.trim() || !characterForm.visualPromptEn.trim()} className="rounded-2xl bg-cyan-200 px-4 py-3 text-sm font-semibold text-black disabled:opacity-40">
-                    {characterForm.id ? (locale === 'zh' ? '保存人物' : 'Save character') : (locale === 'zh' ? '创建人物' : 'Create character')}
-                  </button>
-                  <button onClick={resetCharacterForm} className="rounded-2xl border border-white/10 px-4 py-3 text-sm text-white/70 hover:bg-white/6">
-                    {locale === 'zh' ? '清空表单' : 'Clear form'}
-                  </button>
                 </div>
               </div>
             )}
