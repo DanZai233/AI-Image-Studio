@@ -29,6 +29,8 @@ type Action =
   | { type: 'TOGGLE_FAVORITE_TAG'; payload: string }
   | { type: 'MARK_RECENT_PRESET'; payload: string }
   | { type: 'MARK_RECENT_TAG'; payload: string }
+  | { type: 'TOGGLE_CARRY_FORWARD_ASSET'; payload: string }
+  | { type: 'UPDATE_ASSET_REFERENCE'; payload: { id: string; pinned?: boolean; referenceStrength?: 'subtle' | 'balanced' | 'strong' } }
   | { type: 'SET_RUNTIME_CONFIG'; payload: AppState['runtimeConfig'] }
   | { type: 'SET_MOBILE_SIDEBAR_OPEN'; payload: boolean }
   | { type: 'CREATE_WORKSPACE'; payload?: { name?: string } }
@@ -62,6 +64,7 @@ const defaultPromptBuilder: PromptBuilderState = {
   recentPresetIds: [],
   recentTagIds: [],
   isPromptStoreOpen: false,
+  carryForwardAssetIds: [],
 };
 
 function pushRecent(list: string[], id: string) {
@@ -182,6 +185,7 @@ function reducer(state: AppState, action: Action): AppState {
           recentPresetIds: state.promptBuilder.recentPresetIds,
           recentTagIds: state.promptBuilder.recentTagIds,
           isPromptStoreOpen: state.promptBuilder.isPromptStoreOpen,
+          carryForwardAssetIds: state.promptBuilder.carryForwardAssetIds,
         },
       };
     case 'TOGGLE_FAVORITE_PRESET': {
@@ -224,6 +228,33 @@ function reducer(state: AppState, action: Action): AppState {
           recentTagIds: pushRecent(state.promptBuilder.recentTagIds, action.payload),
         },
       };
+    case 'TOGGLE_CARRY_FORWARD_ASSET': {
+      const exists = state.promptBuilder.carryForwardAssetIds.includes(action.payload);
+      return {
+        ...state,
+        promptBuilder: {
+          ...state.promptBuilder,
+          carryForwardAssetIds: exists
+            ? state.promptBuilder.carryForwardAssetIds.filter((id) => id !== action.payload)
+            : pushRecent(state.promptBuilder.carryForwardAssetIds, action.payload),
+        },
+      };
+    }
+    case 'UPDATE_ASSET_REFERENCE': {
+      const asset = state.assets[action.payload.id];
+      if (!asset) return state;
+      return {
+        ...state,
+        assets: {
+          ...state.assets,
+          [action.payload.id]: {
+            ...asset,
+            pinned: typeof action.payload.pinned === 'boolean' ? action.payload.pinned : asset.pinned,
+            referenceStrength: action.payload.referenceStrength || asset.referenceStrength || 'balanced',
+          },
+        },
+      };
+    }
     case 'SET_RUNTIME_CONFIG':
       return { ...state, runtimeConfig: action.payload };
     case 'SET_MOBILE_SIDEBAR_OPEN':
@@ -286,6 +317,7 @@ function reducer(state: AppState, action: Action): AppState {
         ...defaultPromptBuilder,
         ...(action.payload.promptBuilder ?? {}),
         isPromptStoreOpen: false,
+        carryForwardAssetIds: (action.payload.promptBuilder?.carryForwardAssetIds ?? []).filter((id) => Boolean((action.payload.assets ?? state.assets)?.[id])),
       };
       const savedWorkspaces = action.payload.workspaces?.length ? action.payload.workspaces : [createDefaultWorkspace()];
       const activeWorkspaceId =

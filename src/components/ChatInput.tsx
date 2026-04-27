@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Paperclip, X, Sparkles, MessageSquare, Languages, Store, SlidersHorizontal } from 'lucide-react';
+import { Paperclip, X, Sparkles, MessageSquare, Languages, Store, SlidersHorizontal, Pin, ArrowUpCircle, Layers3 } from 'lucide-react';
 import { useAppStore } from '../lib/store';
 import { generateId, fileToBase64, cn } from '../lib/utils';
 import { ImageAsset } from '../types';
@@ -23,7 +23,11 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
   }, [text]);
 
   const allAssetIds = Object.keys(state.assets).filter((id) => state.assets[id]?.workspaceId === state.activeWorkspaceId);
-  const referencedAssets = useMemo(() => allAssetIds.filter((id) => text.includes(`@${id}`)), [allAssetIds, text]);
+  const carryForwardAssets = state.promptBuilder.carryForwardAssetIds.filter((id) => allAssetIds.includes(id));
+  const referencedAssets = useMemo(
+    () => Array.from(new Set([...carryForwardAssets, ...allAssetIds.filter((id) => text.includes(`@${id}`))])),
+    [allAssetIds, carryForwardAssets, text],
+  );
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
@@ -94,6 +98,11 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
 
   const workspaceMessages = state.messages.filter((message) => message.workspaceId === state.activeWorkspaceId);
   const quotedMessage = state.quotedMessageId ? workspaceMessages.find((m) => m.id === state.quotedMessageId) : null;
+  const recentGeneratedAssets = allAssetIds
+    .map((id) => state.assets[id])
+    .filter(Boolean)
+    .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || b.createdAt - a.createdAt)
+    .slice(0, 6);
   const canSubmit = Boolean(text.trim() || referencedAssets.length);
 
   return (
@@ -138,18 +147,26 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
           </button>
 
           {state.inputMode === 'image' && (
-            <button
-              onClick={togglePromptStore}
-              className={cn(
-                'flex items-center gap-2 rounded-full px-4 py-2 text-sm transition-all border',
-                state.promptBuilder.isPromptStoreOpen
-                  ? 'border-amber-200/30 bg-amber-100/12 text-amber-50'
-                  : 'border-white/6 bg-black/15 text-white/55 hover:text-white',
-              )}
-            >
-              {state.promptBuilder.isPromptStoreOpen ? <SlidersHorizontal className="w-4 h-4" /> : <Store className="w-4 h-4" />}
-              {state.promptBuilder.isPromptStoreOpen ? (locale === 'zh' ? '关闭标签商店' : 'Close Prompt Store') : (locale === 'zh' ? '打开标签商店' : 'Open Prompt Store')}
-            </button>
+            <>
+              <button
+                onClick={togglePromptStore}
+                className={cn(
+                  'flex items-center gap-2 rounded-full px-4 py-2 text-sm transition-all border',
+                  state.promptBuilder.isPromptStoreOpen
+                    ? 'border-amber-200/30 bg-amber-100/12 text-amber-50'
+                    : 'border-white/6 bg-black/15 text-white/55 hover:text-white',
+                )}
+              >
+                {state.promptBuilder.isPromptStoreOpen ? <SlidersHorizontal className="w-4 h-4" /> : <Store className="w-4 h-4" />}
+                {state.promptBuilder.isPromptStoreOpen ? (locale === 'zh' ? '关闭标签商店' : 'Close Prompt Store') : (locale === 'zh' ? '打开标签商店' : 'Open Prompt Store')}
+              </button>
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/8 bg-black/15 px-3 py-2 text-xs text-white/55">
+                <Layers3 className="w-4 h-4 text-fuchsia-200" />
+                {locale === 'zh'
+                  ? `连续参考 ${carryForwardAssets.length} 张`
+                  : `${carryForwardAssets.length} carry-forward refs`}
+              </div>
+            </>
           )}
 
           <div className="ml-auto flex items-center gap-2 rounded-full border border-white/8 bg-black/15 px-2 py-1">
@@ -201,6 +218,81 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
         )}
 
         <div className="relative rounded-[24px] border border-white/8 bg-black/15 px-3 md:px-4 py-3">
+          {state.inputMode === 'image' && recentGeneratedAssets.length > 0 && (
+            <div className="mb-3 rounded-[22px] border border-white/8 bg-white/[0.03] p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="text-[11px] uppercase tracking-[0.24em] text-white/38">
+                  {locale === 'zh' ? '连续创作参考轨道' : 'Continuity reference rail'}
+                </div>
+                <div className="text-xs text-white/38">
+                  {locale === 'zh' ? '置顶 / 强度 / 一键延续' : 'Pin / strength / carry forward'}
+                </div>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {recentGeneratedAssets.map((asset) => {
+                  const isCarried = carryForwardAssets.includes(asset.id);
+                  const strength = asset.referenceStrength || 'balanced';
+                  return (
+                    <div key={asset.id} className="min-w-[172px] rounded-[20px] border border-white/8 bg-black/25 p-2.5">
+                      <div className="relative overflow-hidden rounded-[16px] border border-white/8">
+                        <img src={asset.url} alt={asset.id} className="h-28 w-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => dispatch({ type: 'UPDATE_ASSET_REFERENCE', payload: { id: asset.id, pinned: !asset.pinned } })}
+                          className={cn(
+                            'absolute right-2 top-2 rounded-full p-2 backdrop-blur-md transition',
+                            asset.pinned ? 'bg-amber-200/90 text-black' : 'bg-black/45 text-white/80 hover:bg-black/65',
+                          )}
+                        >
+                          <Pin className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="truncate font-mono text-[11px] text-white/65">@{asset.id}</div>
+                        <button
+                          type="button"
+                          onClick={() => dispatch({ type: 'TOGGLE_CARRY_FORWARD_ASSET', payload: asset.id })}
+                          className={cn(
+                            'rounded-full px-2.5 py-1 text-[11px] transition',
+                            isCarried ? 'bg-fuchsia-300/20 text-fuchsia-100' : 'bg-white/8 text-white/55 hover:bg-white/12',
+                          )}
+                        >
+                          {isCarried ? (locale === 'zh' ? '已延续' : 'Carried') : (locale === 'zh' ? '延续' : 'Carry')}
+                        </button>
+                      </div>
+                      <div className="mt-2 grid grid-cols-3 gap-1 text-[11px]">
+                        {[
+                          { value: 'subtle', label: locale === 'zh' ? '轻' : 'Subtle' },
+                          { value: 'balanced', label: locale === 'zh' ? '中' : 'Balanced' },
+                          { value: 'strong', label: locale === 'zh' ? '强' : 'Strong' },
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => dispatch({ type: 'UPDATE_ASSET_REFERENCE', payload: { id: asset.id, referenceStrength: option.value as 'subtle' | 'balanced' | 'strong' } })}
+                            className={cn(
+                              'rounded-full px-2 py-1 transition',
+                              strength === option.value ? 'bg-white text-black' : 'bg-white/8 text-white/55 hover:bg-white/12',
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setText((prev) => `${prev}${prev.trim() ? '\n' : ''}@${asset.id} ${locale === 'zh' ? '延续上一张图的主体气质与构图。' : 'Continue the subject mood and composition from this image.'}`)}
+                        className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-white/6 px-3 py-2 text-xs text-white/70 hover:bg-white/10"
+                      >
+                        <ArrowUpCircle className="h-3.5 w-3.5" />
+                        {locale === 'zh' ? '作为下一张起点' : 'Use as next starting point'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <textarea
             ref={textareaRef}
             value={text}

@@ -52,6 +52,8 @@ export interface ImageAsset {
   createdAt: number;
   prompt?: string;
   workspaceId: string;
+  pinned?: boolean;
+  referenceStrength?: 'subtle' | 'balanced' | 'strong';
 }
 
 export interface PromptPreset {
@@ -110,6 +112,7 @@ export interface PromptBuilderState {
   recentPresetIds: string[];
   recentTagIds: string[];
   isPromptStoreOpen: boolean;
+  carryForwardAssetIds: string[];
 }
 
 export type AppState = {

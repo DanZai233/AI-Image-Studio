@@ -2,7 +2,34 @@ import { resolveProvider } from './_shared/provider.js';
 
 export const config = {
   runtime: 'nodejs',
+  maxDuration: 300,
 };
+
+const REQUEST_TIMEOUT_MS = 300000;
+
+async function safeFetch(url, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const message = error?.name === 'AbortError'
+      ? `Upstream chat request timed out after ${REQUEST_TIMEOUT_MS}ms`
+      : error?.message || 'fetch failed';
+    return {
+      ok: false,
+      status: error?.name === 'AbortError' ? 504 : 502,
+      body: null,
+      json: async () => ({ error: message }),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -13,7 +40,7 @@ export default async function handler(req, res) {
     const { settings, systemPrompt, messages } = req.body || {};
     const provider = resolveProvider(settings || {});
 
-    const upstream = await fetch(`${provider.endpoint}/chat/completions`, {
+    const upstream = await safeFetch(`${provider.endpoint}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

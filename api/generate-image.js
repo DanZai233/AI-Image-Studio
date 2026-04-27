@@ -2,9 +2,10 @@ import { resolveProvider } from './_shared/provider.js';
 
 export const config = {
   runtime: 'nodejs',
+  maxDuration: 300,
 };
 
-const REQUEST_TIMEOUT_MS = 30000;
+const REQUEST_TIMEOUT_MS = 300000;
 
 function normalizeReferenceImages(referenceImages = []) {
   if (!Array.isArray(referenceImages)) return [];
@@ -39,6 +40,18 @@ function shouldFallbackToText(response, data) {
   );
 }
 
+function shouldRetryWithoutResponseFormat(response, data) {
+  if (!response || response.ok) return false;
+  const message = String(data?.error?.message || data?.error || '').toLowerCase();
+  return (
+    response.status === 400 ||
+    message.includes('response_format') ||
+    message.includes('b64_json') ||
+    message.includes('unsupported parameter') ||
+    message.includes('unknown parameter')
+  );
+}
+
 function extractImageFromImagesPayload(data) {
   const b64 = data?.data?.[0]?.b64_json;
   const url = data?.data?.[0]?.url;
@@ -61,10 +74,13 @@ async function safeFetch(url, options) {
     });
     return response;
   } catch (error) {
+    const message = error?.name === 'AbortError'
+      ? `Upstream request timed out after ${REQUEST_TIMEOUT_MS}ms`
+      : error?.message || 'fetch failed';
     return {
       ok: false,
       status: error?.name === 'AbortError' ? 504 : 502,
-      json: async () => ({ error: error?.message || 'fetch failed' }),
+      json: async () => ({ error: message }),
     };
   } finally {
     clearTimeout(timeout);
@@ -77,10 +93,13 @@ async function safeFetchJson(url, options) {
   return { response, data };
 }
 
-function buildEditFormData({ promptText, imageModel, imageUrls }) {
+function buildEditFormData({ promptText, imageModel, imageUrls, includeResponseFormat = true }) {
   const formData = new FormData();
   formData.append('prompt', promptText);
   formData.append('model', imageModel);
+  if (includeResponseFormat) {
+    formData.append('response_format', 'b64_json');
+  }
 
   imageUrls.forEach((dataUrl, index) => {
     const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/);

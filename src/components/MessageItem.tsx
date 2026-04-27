@@ -1,5 +1,5 @@
 import React from 'react';
-import { Reply, Download, Share2, ZoomIn } from 'lucide-react';
+import { Reply, Download, Share2, ZoomIn, Pin, ArrowUpCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Message } from '../types';
 import { useAppStore } from '../lib/store';
@@ -73,6 +73,26 @@ export function MessageItem({ message }: { message: Message }) {
                   <div className="flex items-center gap-2 justify-end">
                     <button onClick={() => dispatch({ type: 'SET_QUOTED_MESSAGE', payload: message.id })} className="p-2 bg-white/15 hover:bg-white/30 backdrop-blur-md rounded-xl text-white transition-colors">
                       <Reply className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => dispatch({ type: 'TOGGLE_CARRY_FORWARD_ASSET', payload: asset.id })}
+                      className={cn(
+                        'p-2 backdrop-blur-md rounded-xl transition-colors',
+                        state.promptBuilder.carryForwardAssetIds.includes(asset.id)
+                          ? 'bg-fuchsia-300/25 text-fuchsia-50'
+                          : 'bg-white/15 hover:bg-white/30 text-white',
+                      )}
+                    >
+                      <ArrowUpCircle className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => dispatch({ type: 'UPDATE_ASSET_REFERENCE', payload: { id: asset.id, pinned: !asset.pinned } })}
+                      className={cn(
+                        'p-2 backdrop-blur-md rounded-xl transition-colors',
+                        asset.pinned ? 'bg-amber-200 text-black' : 'bg-white/15 hover:bg-white/30 text-white',
+                      )}
+                    >
+                      <Pin className="w-4 h-4" />
                     </button>
                     <button onClick={() => handleShare(asset.id, asset.url)} className="p-2 bg-white/15 hover:bg-white/30 backdrop-blur-md rounded-xl text-white transition-colors">
                       <Share2 className="w-4 h-4" />
