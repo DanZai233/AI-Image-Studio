@@ -1,16 +1,28 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { Paperclip, X, Sparkles, MessageSquare, Languages, Store, SlidersHorizontal, Pin, ArrowUpCircle, Layers3 } from 'lucide-react';
 import { useAppStore } from '../lib/store';
-import { generateId, fileToBase64, cn } from '../lib/utils';
-import { ImageAsset } from '../types';
+import { cn } from '../lib/utils';
 import { t } from '../lib/i18n';
 import { PromptStore } from './PromptStore';
+import { useAssetActions } from '../lib/useAssetActions';
+
+function isLikelyImageUrl(value: string) {
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol)) return false;
+    return /\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?.*)?$/i.test(url.pathname) || /image/i.test(url.search);
+  } catch {
+    return false;
+  }
+}
 
 export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAssets: string[]) => void }) {
   const { state, dispatch } = useAppStore();
+  const { addUploadAssetFromFile, addUploadAssetFromUrl, removeAsset } = useAssetActions();
   const [text, setText] = useState('');
   const [showMentions, setShowMentions] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
+  const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { locale } = state;
@@ -24,6 +36,7 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
 
   const allAssetIds = Object.keys(state.assets).filter((id) => state.assets[id]?.workspaceId === state.activeWorkspaceId);
   const carryForwardAssets = state.promptBuilder.carryForwardAssetIds.filter((id) => allAssetIds.includes(id));
+  const selectedCharacters = state.promptBuilder.selectedCharacterIds.map((id) => state.characters[id]).filter(Boolean);
   const referencedAssets = useMemo(
     () => Array.from(new Set([...carryForwardAssets, ...allAssetIds.filter((id) => text.includes(`@${id}`))])),
     [allAssetIds, carryForwardAssets, text],
@@ -72,28 +85,98 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
     textareaRef.current?.focus();
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const appendAssetMention = (assetId: string) => {
+    setText((prev) => prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + `@${assetId} `);
+  };
 
+  const removeAssetMention = (assetId: string) => {
+    const mentionPattern = new RegExp(`(^|\\s)@${assetId}(?=\\s|$)`, 'g');
+    setText((prev) => prev.replace(mentionPattern, ' ').replace(/\s{2,}/g, ' ').trim());
+  };
+
+  const handleRemoveAsset = (assetId: string) => {
+    removeAsset(assetId, { onRemoved: removeAssetMention });
+  };
+
+  const createAssetFromFile = async (file: File) => {
     try {
-      const b64 = await fileToBase64(file);
-      const id = generateId('IMG_');
-      const newAsset: ImageAsset = {
-        id,
-        name: file.name,
-        url: b64,
-        source: 'upload',
-        createdAt: Date.now(),
-        workspaceId: state.activeWorkspaceId,
-      };
-      dispatch({ type: 'ADD_ASSET', payload: newAsset });
-      setText((prev) => prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + `@${id} `);
+      await addUploadAssetFromFile(file, {
+        onAdded: (asset) => appendAssetMention(asset.id),
+      });
     } catch (err) {
       console.error('Failed to parse image', err);
     }
+  };
+
+  const createAssetFromUrl = (imageUrl: string) => {
+    try {
+      addUploadAssetFromUrl(imageUrl, {
+        onAdded: (asset) => appendAssetMention(asset.id),
+      });
+      return true;
+    } catch (err) {
+      console.error('Failed to parse image URL', err);
+      return false;
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    for (const file of files) {
+      if (file.type.startsWith('image/')) {
+        await createAssetFromFile(file);
+      }
+    }
 
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(e.clipboardData.items || []);
+    const imageItem = items.find((item) => item.type.startsWith('image/'));
+    if (imageItem) {
+      const file = imageItem.getAsFile();
+      if (!file) return;
+      e.preventDefault();
+      await createAssetFromFile(file);
+      return;
+    }
+
+    const pastedText = e.clipboardData.getData('text').trim();
+    if (isLikelyImageUrl(pastedText)) {
+      e.preventDefault();
+      if (createAssetFromUrl(pastedText)) {
+        setShowMentions(false);
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!Array.from(e.dataTransfer.types || []).includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setIsDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    const files = Array.from(e.dataTransfer.files || []).filter((file) => file.type.startsWith('image/'));
+    if (!files.length) {
+      setIsDragOver(false);
+      return;
+    }
+
+    e.preventDefault();
+    setIsDragOver(false);
+    for (const file of files) {
+      await createAssetFromFile(file);
+    }
   };
 
   const workspaceMessages = state.messages.filter((message) => message.workspaceId === state.activeWorkspaceId);
@@ -198,6 +281,41 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
           </div>
         )}
 
+        {state.inputMode === 'image' && selectedCharacters.length > 0 && (
+          <div className="mb-3 rounded-[22px] border border-cyan-300/12 bg-cyan-300/8 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-50/70">
+                {locale === 'zh' ? `已选人物 ${selectedCharacters.length}/3` : `Selected characters ${selectedCharacters.length}/3`}
+              </div>
+              <button
+                type="button"
+                onClick={togglePromptStore}
+                className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-[11px] text-cyan-50 hover:bg-cyan-300/16"
+              >
+                {locale === 'zh' ? '管理人物' : 'Manage characters'}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {selectedCharacters.map((character) => (
+                <div
+                  key={character.id}
+                  className="inline-flex items-center gap-2 rounded-full border border-cyan-300/18 bg-black/20 px-3 py-2 text-xs text-cyan-50"
+                >
+                  <span className="max-w-[10rem] truncate">{character.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => dispatch({ type: 'TOGGLE_CHARACTER_SELECTION', payload: character.id })}
+                    className="rounded-full bg-white/10 p-1 text-white/70 hover:bg-white/20 hover:text-white"
+                    aria-label={locale === 'zh' ? `移除人物 ${character.name}` : `Remove character ${character.name}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {showMentions && allAssetIds.length > 0 && (
           <div className="absolute bottom-full left-4 mb-3 w-72 rounded-3xl border border-white/10 bg-[#121217]/95 p-2 shadow-2xl z-50">
             <div className="px-3 py-2 text-[11px] uppercase tracking-[0.25em] text-white/35">{t(locale, 'selectImageReference')}</div>
@@ -217,7 +335,15 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
           </div>
         )}
 
-        <div className="relative rounded-[24px] border border-white/8 bg-black/15 px-3 md:px-4 py-3">
+        <div
+          className={cn(
+            'relative rounded-[24px] border bg-black/15 px-3 md:px-4 py-3 transition-colors',
+            isDragOver ? 'border-fuchsia-200/45 bg-fuchsia-300/10' : 'border-white/8',
+          )}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
           {state.inputMode === 'image' && recentGeneratedAssets.length > 0 && (
             <div className="mb-3 rounded-[22px] border border-white/8 bg-white/[0.03] p-3">
               <div className="mb-2 flex items-center justify-between gap-3">
@@ -236,6 +362,14 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
                     <div key={asset.id} className="min-w-[172px] rounded-[20px] border border-white/8 bg-black/25 p-2.5">
                       <div className="relative overflow-hidden rounded-[16px] border border-white/8">
                         <img src={asset.url} alt={asset.id} className="h-28 w-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAsset(asset.id)}
+                          className="absolute left-2 top-2 rounded-full bg-black/55 p-2 text-white/80 backdrop-blur-md transition hover:bg-black/75 hover:text-white"
+                          aria-label={locale === 'zh' ? '删除参考图' : 'Delete reference image'}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => dispatch({ type: 'UPDATE_ASSET_REFERENCE', payload: { id: asset.id, pinned: !asset.pinned } })}
@@ -298,10 +432,14 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
             value={text}
             onChange={handleTextChange}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder={state.inputMode === 'chat' ? t(locale, 'inputPlaceholderChat') : t(locale, 'inputPlaceholderImage')}
             className="w-full bg-transparent text-white placeholder:text-white/28 outline-none resize-none min-h-[72px] max-h-72 text-[15px] leading-7"
             rows={1}
           />
+          <div className="mt-2 text-xs text-white/36">
+            {locale === 'zh' ? '支持粘贴图片、粘贴图片 URL，或直接把图片拖到这里。' : 'Paste an image, paste an image URL, or drag an image here.'}
+          </div>
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-white/8 pt-3">
             <div className="flex items-center gap-2 flex-wrap">
@@ -312,7 +450,7 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
                 <Paperclip className="w-4 h-4" />
                 {t(locale, 'uploadRefImage')}
               </button>
-              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
+              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" multiple onChange={handleFileUpload} />
               <div className="text-xs text-white/40">
                 {locale === 'zh'
                   ? `当前工作区已带入 ${workspaceMessages.length} 条消息和 ${allAssetIds.length} 张图片上下文`

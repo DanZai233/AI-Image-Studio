@@ -10,7 +10,7 @@ const REQUEST_TIMEOUT_MS = 300000;
 function normalizeReferenceImages(referenceImages = []) {
   if (!Array.isArray(referenceImages)) return [];
   return referenceImages
-    .filter((item) => item && typeof item.url === 'string' && item.url.startsWith('data:image/'))
+    .filter((item) => item && typeof item.url === 'string' && (item.url.startsWith('data:image/') || /^https?:\/\//i.test(item.url)))
     .slice(0, 3)
     .map((item) => item.url);
 }
@@ -93,7 +93,41 @@ async function safeFetchJson(url, options) {
   return { response, data };
 }
 
-function buildEditFormData({ promptText, imageModel, imageUrls, includeResponseFormat = true }) {
+function inferImageMimeType(url, contentType = '') {
+  if (contentType.toLowerCase().startsWith('image/')) {
+    return contentType.split(';')[0].trim();
+  }
+
+  const normalizedUrl = url.split('?')[0].toLowerCase();
+  if (normalizedUrl.endsWith('.jpg') || normalizedUrl.endsWith('.jpeg')) return 'image/jpeg';
+  if (normalizedUrl.endsWith('.webp')) return 'image/webp';
+  if (normalizedUrl.endsWith('.gif')) return 'image/gif';
+  if (normalizedUrl.endsWith('.bmp')) return 'image/bmp';
+  if (normalizedUrl.endsWith('.svg')) return 'image/svg+xml';
+  if (normalizedUrl.endsWith('.avif')) return 'image/avif';
+  return 'image/png';
+}
+
+async function createImageBlobFromUrl(imageUrl) {
+  if (imageUrl.startsWith('data:image/')) {
+    const match = imageUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/);
+    if (!match) return null;
+    const [, mimeType, base64Data] = match;
+    const buffer = Buffer.from(base64Data, 'base64');
+    return { blob: new Blob([buffer], { type: mimeType }), mimeType };
+  }
+
+  const response = await safeFetch(imageUrl, { method: 'GET' });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch reference image: ${imageUrl}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const mimeType = inferImageMimeType(imageUrl, response.headers?.get?.('content-type') || '');
+  return { blob: new Blob([Buffer.from(arrayBuffer)], { type: mimeType }), mimeType };
+}
+
+async function buildEditFormData({ promptText, imageModel, imageUrls, includeResponseFormat = true }) {
   const formData = new FormData();
   formData.append('prompt', promptText);
   formData.append('model', imageModel);
@@ -101,15 +135,13 @@ function buildEditFormData({ promptText, imageModel, imageUrls, includeResponseF
     formData.append('response_format', 'b64_json');
   }
 
-  imageUrls.forEach((dataUrl, index) => {
-    const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/);
-    if (!match) return;
-    const [, mimeType, base64Data] = match;
-    const buffer = Buffer.from(base64Data, 'base64');
-    const blob = new Blob([buffer], { type: mimeType });
+  for (const [index, imageUrl] of imageUrls.entries()) {
+    const imageFile = await createImageBlobFromUrl(imageUrl);
+    if (!imageFile) continue;
+    const { blob, mimeType } = imageFile;
     const ext = mimeType.split('/')[1] || 'png';
     formData.append('image', blob, `reference-${index + 1}.${ext}`);
-  });
+  }
 
   return formData;
 }
@@ -173,7 +205,7 @@ export default async function handler(req, res) {
     };
 
     const requestImagesEdits = async () => {
-      const formData = buildEditFormData({ promptText, imageModel: provider.imageModel, imageUrls });
+      const formData = await buildEditFormData({ promptText, imageModel: provider.imageModel, imageUrls });
       const { response, data } = await safeFetchJson(`${provider.endpoint}/images/edits`, {
         method: 'POST',
         headers: {
