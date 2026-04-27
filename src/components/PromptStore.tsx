@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import {
   Sparkles,
   Wand2,
@@ -50,6 +50,8 @@ function CharacterEditorModal({
   onChange,
   onSave,
   onReset,
+  onUploadCoverFile,
+  onUploadReferenceFiles,
 }: {
   locale: 'zh' | 'en';
   form: {
@@ -71,7 +73,11 @@ function CharacterEditorModal({
   onChange: (field: keyof typeof form, value: string) => void;
   onSave: () => void;
   onReset: () => void;
+  onUploadCoverFile: (file: File) => Promise<unknown>;
+  onUploadReferenceFiles: (files: FileList | File[]) => Promise<unknown>;
 }) {
+  const coverInputRef = useRef<HTMLInputElement>(null);
+  const referenceInputRef = useRef<HTMLInputElement>(null);
   if (!isOpen) return null;
 
   return (
@@ -164,18 +170,65 @@ function CharacterEditorModal({
               {locale === 'zh' ? '参考图与封面' : 'References and cover'}
             </div>
             <div className="space-y-3">
-              <input
-                value={form.coverImageUrl}
-                onChange={(e) => onChange('coverImageUrl', e.target.value)}
-                placeholder={locale === 'zh' ? '封面图 URL（可选）' : 'Cover image URL (optional)'}
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none"
-              />
+              <div className="grid sm:grid-cols-[1fr_auto] gap-3">
+                <input
+                  value={form.coverImageUrl}
+                  onChange={(e) => onChange('coverImageUrl', e.target.value)}
+                  placeholder={locale === 'zh' ? '封面图 URL（可选）' : 'Cover image URL (optional)'}
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => coverInputRef.current?.click()}
+                  className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-50 hover:bg-cyan-300/16"
+                >
+                  {locale === 'zh' ? '上传封面图' : 'Upload cover'}
+                </button>
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      await onUploadCoverFile(file);
+                    }
+                    e.currentTarget.value = '';
+                  }}
+                />
+              </div>
               <textarea
                 value={form.referenceImageUrlsText}
                 onChange={(e) => onChange('referenceImageUrlsText', e.target.value)}
                 placeholder={locale === 'zh' ? '参考图 URL，每行一条，最多 4 条' : 'Reference image URLs, one per line, up to 4'}
                 className="min-h-28 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none"
               />
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => referenceInputRef.current?.click()}
+                  className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-50 hover:bg-cyan-300/16"
+                >
+                  {locale === 'zh' ? '上传本地参考图' : 'Upload local references'}
+                </button>
+                <div className="text-xs text-white/45">
+                  {locale === 'zh' ? '支持本地图片或 URL，统一保存到人物档案中。' : 'Use local images or URLs. Both are saved into the character profile.'}
+                </div>
+                <input
+                  ref={referenceInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={async (e) => {
+                    if (e.target.files?.length) {
+                      await onUploadReferenceFiles(e.target.files);
+                    }
+                    e.currentTarget.value = '';
+                  }}
+                />
+              </div>
               <input
                 value={form.tagsText}
                 onChange={(e) => onChange('tagsText', e.target.value)}
@@ -226,6 +279,8 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
     closeEditor: closeCharacterEditor,
     updateField: handleCharacterFormChange,
     resetForm: resetCharacterForm,
+    uploadCoverFile,
+    appendReferenceFiles,
     saveCharacter,
   } = useCharacterForm();
 
@@ -527,6 +582,8 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
           onChange={handleCharacterFormChange}
           onSave={saveCharacter}
           onReset={resetCharacterForm}
+          onUploadCoverFile={uploadCoverFile}
+          onUploadReferenceFiles={appendReferenceFiles}
         />
 
         <div className="flex items-start justify-between gap-4 flex-wrap shrink-0">
