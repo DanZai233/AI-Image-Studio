@@ -68,6 +68,21 @@ export interface PromptPreset {
   featured?: boolean;
 }
 
+export interface CharacterProfile {
+  id: string;
+  name: string;
+  title?: string;
+  description: Record<Locale, string>;
+  visualPrompt: Record<Locale, string>;
+  stylePrompt?: Record<Locale, string>;
+  referenceImageUrls: string[];
+  coverImageUrl?: string;
+  tags?: string[];
+  featured?: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface TagDefinition {
   id: string;
   label: Record<Locale, string>;
@@ -90,6 +105,7 @@ export interface Message {
   metadata?: {
     presetId?: string;
     tags?: string[];
+    characterIds?: string[];
   };
 }
 
@@ -103,15 +119,19 @@ export interface Workspace {
 export interface PromptBuilderState {
   selectedPresetId: string | null;
   selectedTagIds: string[];
+  selectedCharacterIds: string[];
   customSuffix: string;
   presetSearch: string;
   tagSearch: string;
+  characterSearch: string;
   activePresetCategory: PromptPresetCategory | 'all';
   activeTagGroup: PromptTagGroup | 'all';
   favoritePresetIds: string[];
   favoriteTagIds: string[];
+  favoriteCharacterIds: string[];
   recentPresetIds: string[];
   recentTagIds: string[];
+  recentCharacterIds: string[];
   isPromptStoreOpen: boolean;
   carryForwardAssetIds: string[];
 }
@@ -120,6 +140,7 @@ export type AppState = {
   settings: AIModelSettings;
   messages: Message[];
   assets: Record<string, ImageAsset>;
+  characters: Record<string, CharacterProfile>;
   workspaces: Workspace[];
   activeWorkspaceId: string;
   quotedMessageId: string | null;

@@ -23,12 +23,30 @@ import { generateId, cn } from './lib/utils';
 import { fetchImageGeneration, fetchChatCompletionStream } from './lib/openai';
 import { t, tf } from './lib/i18n';
 import { promptPresets, tagDefinitions } from './lib/promptLibrary';
-import { ContextSnapshot } from './types';
+import { CharacterProfile, ContextSnapshot } from './types';
 import { useAssetActions } from './lib/useAssetActions';
 
 const IMAGE_CONTEXT_MESSAGE_LIMIT = 6;
 const IMAGE_CONTEXT_CHAR_LIMIT = 220;
 const IMAGE_CONTEXT_ASSET_LIMIT = 4;
+const CHARACTER_REFERENCE_IMAGE_LIMIT = 2;
+
+function buildCharacterPromptBlock(locale: 'zh' | 'en', characters: CharacterProfile[]) {
+  if (!characters.length) return '';
+  const intro =
+    locale === 'zh'
+      ? '本次画面必须包含以下已选人物，请保持每个人物与其参考图一致，不要把多人特征融合成同一个人：'
+      : 'This image must include all selected characters below. Keep each one faithful to their own references and do not merge them into a single person:';
+  const lines = characters.map((character, index) => {
+    const promptParts = [character.visualPrompt[locale], character.stylePrompt?.[locale]].filter(Boolean).join('，');
+    return `${index + 1}. ${character.name}${character.title ? ` (${character.title})` : ''}: ${promptParts}`;
+  });
+  const outro =
+    locale === 'zh'
+      ? '请在同一张图中清晰渲染这些人物，并保持他们彼此可区分。'
+      : 'Render these characters together in the same image and keep them visually distinct from each other.';
+  return [intro, ...lines, outro].join('\n');
+}
 
 function SidebarContent({
   imageContextSnapshot,
@@ -300,6 +318,7 @@ function MainApp() {
 
   const selectedPreset = promptPresets.find((preset) => preset.id === state.promptBuilder.selectedPresetId) || null;
   const selectedTags = tagDefinitions.filter((tag) => state.promptBuilder.selectedTagIds.includes(tag.id));
+  const selectedCharacters = state.promptBuilder.selectedCharacterIds.map((id) => state.characters[id]).filter(Boolean);
 
   const buildImageGenerationContext = (nextUserMessage?: { id: string; content: string; imageAssets: string[] }): ContextSnapshot => {
     const candidateMessages = nextUserMessage ? [...workspaceMessages, {
@@ -398,6 +417,7 @@ function MainApp() {
     const metadata = {
       presetId: state.promptBuilder.selectedPresetId || undefined,
       tags: selectedTags.map((tag) => tag.value),
+      characterIds: selectedCharacters.map((character) => character.id),
     };
 
     const userMsgId = generateId('msg_');
@@ -432,14 +452,30 @@ function MainApp() {
 
         try {
           const referenceAssets = referencedAssets.map((assetId) => state.assets[assetId]).filter(Boolean);
+          const characterPromptBlock = buildCharacterPromptBlock(locale, selectedCharacters);
+          const characterReferenceAssets = selectedCharacters.flatMap((character) =>
+            character.referenceImageUrls.slice(0, CHARACTER_REFERENCE_IMAGE_LIMIT).map((url, index) => ({
+              id: `${character.id}_REF_${index + 1}`,
+              name: `${character.name} ref ${index + 1}`,
+              url,
+              source: 'upload' as const,
+              createdAt: Date.now(),
+              workspaceId: state.activeWorkspaceId,
+              prompt: character.visualPrompt[locale],
+            })),
+          );
+          const mergedReferenceAssets = Array.from(
+            new Map([...referenceAssets, ...characterReferenceAssets].map((asset) => [asset.url, asset])).values(),
+          ).slice(0, 3);
+          const finalPrompt = [text, characterPromptBlock].filter(Boolean).join('\n\n');
           const contextSnapshot = buildImageGenerationContext({ id: userMsgId, content: text, imageAssets: referencedAssets });
-          const fallbackContext = contextSnapshot.summary;
+          const fallbackContext = [contextSnapshot.summary, characterPromptBlock].filter(Boolean).join('\n\n');
 
-          const requestedImageMode = settings.imageMode === 'auto' ? (referenceAssets.length > 0 ? 'edit' : 'generate') : settings.imageMode;
+          const requestedImageMode = settings.imageMode === 'auto' ? (mergedReferenceAssets.length > 0 ? 'edit' : 'generate') : settings.imageMode;
           const generationResult = await fetchImageGeneration(
             settings,
-            text,
-            referenceAssets,
+            finalPrompt,
+            mergedReferenceAssets,
             fallbackContext,
             requestedImageMode,
             workspaceMessages.slice(-IMAGE_CONTEXT_MESSAGE_LIMIT).map((message) => ({
@@ -473,9 +509,9 @@ function MainApp() {
               id: generateId('msg_'),
               role: 'assistant',
               content: selectedPreset
-                ? `${locale === 'zh' ? '已根据预设生成：' : 'Generated with preset:'} ${selectedPreset.title[locale]}`
+                ? `${locale === 'zh' ? '已根据预设生成：' : 'Generated with preset:'} ${selectedPreset.title[locale]}${selectedCharacters.length ? ` · ${selectedCharacters.map((character) => character.name).join(', ')}` : ''}`
                 : locale === 'zh'
-                  ? '图像生成完成。'
+                  ? `图像生成完成${selectedCharacters.length ? `，已带入人物：${selectedCharacters.map((character) => character.name).join('、')}` : '。'}`
                   : 'Image generation complete.',
               mode: 'image',
               imageAssets: [imgId],

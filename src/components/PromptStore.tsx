@@ -14,12 +14,19 @@ import {
   Clock3,
   Flame,
   Star,
+  UserRound,
+  Users,
+  Plus,
+  Trash2,
+  Pencil,
 } from 'lucide-react';
 import { useAppStore } from '../lib/store';
 import { promptPresets, tagDefinitions } from '../lib/promptLibrary';
 import { t } from '../lib/i18n';
 import { cn } from '../lib/utils';
-import { PromptPresetCategory, PromptTagGroup } from '../types';
+import { CharacterProfile, PromptPresetCategory, PromptTagGroup } from '../types';
+import { useCharacterProfiles } from '../lib/useCharacterProfiles';
+import { useCharacterForm } from '../lib/useCharacterForm';
 
 const groupIconMap = {
   quality: Sparkles,
@@ -37,6 +44,28 @@ const tagGroupOrder: Array<PromptTagGroup | 'all'> = ['all', 'quality', 'lightin
 export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt: string) => void; onClose: () => void }) {
   const { state, dispatch } = useAppStore();
   const { locale, promptBuilder } = state;
+  const {
+    filteredCharacters,
+    selectedCharacters,
+    favoriteCharacters,
+    recentCharacters,
+    selectedCharacterIds,
+    favoriteCharacterIds,
+    characterSearch,
+    toggleCharacter,
+    toggleFavoriteCharacter,
+    removeCharacter,
+    setCharacterSearch,
+  } = useCharacterProfiles();
+  const {
+    form: characterForm,
+    isEditorOpen: isCharacterEditorOpen,
+    openEditor: openCharacterEditor,
+    closeEditor: closeCharacterEditor,
+    updateField: handleCharacterFormChange,
+    resetForm: resetCharacterForm,
+    saveCharacter,
+  } = useCharacterForm();
 
   const presetCategoryLabels: Record<PromptPresetCategory | 'all', string> = {
     all: t(locale, 'all'),
@@ -104,6 +133,18 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
   const composedPrompt = [selectedPreset?.prompt[locale], ...selectedTags.map((tag) => tag.value), promptBuilder.customSuffix.trim()]
     .filter(Boolean)
     .join(', ');
+
+  const characterPromptPreview = selectedCharacters
+    .map((character, index) => {
+      const promptParts = [character.visualPrompt[locale], character.stylePrompt?.[locale]].filter(Boolean).join(', ');
+      return `${index + 1}. ${character.name}${character.title ? ` (${character.title})` : ''}: ${promptParts}`;
+    })
+    .join('\n');
+
+  const characterReferenceCount = selectedCharacters.reduce(
+    (count, character) => count + Math.min(character.referenceImageUrls.length, 2),
+    0,
+  );
 
   const handlePresetSelect = (presetId: string) => {
     const active = promptBuilder.selectedPresetId === presetId;
@@ -221,6 +262,68 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
     );
   };
 
+  const renderCharacterCard = (character: CharacterProfile) => {
+    const active = selectedCharacterIds.includes(character.id);
+    const isFavorite = favoriteCharacterIds.includes(character.id);
+
+    return (
+      <div
+        key={character.id}
+        className={cn(
+          'rounded-3xl border p-4 transition-all duration-300',
+          active
+            ? 'border-cyan-300/35 bg-cyan-300/10 shadow-[0_16px_50px_rgba(69,211,255,0.16)]'
+            : 'border-white/8 bg-white/[0.03] hover:border-white/20 hover:bg-white/8',
+        )}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <button onClick={() => toggleCharacter(character.id)} className="flex flex-1 items-start gap-3 text-left">
+            <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+              {character.coverImageUrl ? (
+                <img src={character.coverImageUrl} alt={character.name} className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-white/35">
+                  <UserRound className="h-5 w-5" />
+                </div>
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="text-sm font-medium text-white">{character.name}</div>
+                {character.title && <span className="text-[11px] text-white/40">{character.title}</span>}
+              </div>
+              <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/58">{character.description[locale]}</p>
+              <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-white/38">
+                <span>{character.referenceImageUrls.length} {locale === 'zh' ? '张参考图' : 'references'}</span>
+                {(character.tags || []).slice(0, 3).map((tag) => (
+                  <span key={tag}>#{tag}</span>
+                ))}
+              </div>
+            </div>
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => toggleFavoriteCharacter(character.id)}
+              className={cn(
+                'rounded-full border p-2 transition-colors',
+                isFavorite ? 'border-rose-300/30 bg-rose-300/12 text-rose-100' : 'border-white/10 bg-white/5 text-white/45 hover:text-white',
+              )}
+              aria-label={locale === 'zh' ? '收藏人物' : 'Favorite character'}
+            >
+              <Heart className={cn('w-4 h-4', isFavorite && 'fill-current')} />
+            </button>
+            <button onClick={() => openCharacterEditor(character)} className="rounded-full border border-white/10 bg-white/5 p-2 text-white/45 hover:text-white">
+              <Pencil className="w-4 h-4" />
+            </button>
+            <button onClick={() => removeCharacter(character.id)} className="rounded-full border border-rose-300/15 bg-rose-300/8 p-2 text-rose-100/75 hover:bg-rose-300/12">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderCompactShelf = (
     title: string,
     icon: React.ReactNode,
@@ -261,7 +364,7 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
           </div>
           <div className="flex items-center gap-2">
             <div className="rounded-full border border-amber-200/20 bg-amber-100/10 px-3 py-1 text-[11px] text-amber-100/80">
-              {locale === 'zh' ? '按风格 / 构图 / 光线精心策划' : 'Curated by style / composition / light'}
+              {locale === 'zh' ? '按风格 / 构图 / 光线 / 人物管理' : 'Curated by style / composition / light / characters'}
             </div>
             <button onClick={onClose} className="rounded-full border border-white/10 bg-white/6 p-2 text-white/65 hover:bg-white/10 hover:text-white" aria-label={locale === 'zh' ? '关闭标签商店' : 'Close prompt store'}>
               <X className="w-4 h-4" />
@@ -277,6 +380,7 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
               [
                 ...favoritePresets.map((preset) => ({ id: `preset-${preset!.id}`, label: preset!.title[locale], onClick: () => handlePresetSelect(preset!.id) })),
                 ...favoriteTags.map((tag) => ({ id: `tag-${tag!.id}`, label: tag!.label[locale], onClick: () => toggleTag(tag!.id) })),
+                ...favoriteCharacters.map((character) => ({ id: `character-${character!.id}`, label: character!.name, onClick: () => toggleCharacter(character!.id) })),
               ],
               t(locale, 'favoritesEmpty'),
             )}
@@ -287,6 +391,7 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
               [
                 ...recentPresets.map((preset) => ({ id: `recent-preset-${preset!.id}`, label: preset!.title[locale], onClick: () => handlePresetSelect(preset!.id) })),
                 ...recentTags.map((tag) => ({ id: `recent-tag-${tag!.id}`, label: tag!.label[locale], onClick: () => toggleTag(tag!.id) })),
+                ...recentCharacters.map((character) => ({ id: `recent-character-${character!.id}`, label: character!.name, onClick: () => toggleCharacter(character!.id) })),
               ],
               t(locale, 'recentEmpty'),
             )}
@@ -333,6 +438,46 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
                 {filteredPresets.map(renderPresetCard)}
               </div>
               {!filteredPresets.length && <p className="text-sm text-white/35">{t(locale, 'noPresetResults')}</p>}
+            </div>
+
+            <div className="rounded-[26px] border border-white/8 bg-black/15 p-4 space-y-4">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.28em] text-white/40">
+                  <Users className="w-4 h-4" />
+                  {locale === 'zh' ? '人物预设' : 'Characters'}
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-1 text-[11px] text-white/45">
+                    {filteredCharacters.length} {t(locale, 'results')}
+                  </div>
+                  <button
+                    onClick={() => openCharacterEditor()}
+                    className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1.5 text-xs text-cyan-50 hover:bg-cyan-300/16"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    {locale === 'zh' ? '新增人物' : 'New character'}
+                  </button>
+                </div>
+              </div>
+
+              <label className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+                <Search className="w-4 h-4 text-white/35" />
+                <input
+                  value={characterSearch}
+                  onChange={(e) => setCharacterSearch(e.target.value)}
+                  placeholder={locale === 'zh' ? '搜索人物名、外观、风格关键词' : 'Search character name, appearance, or style keywords'}
+                  className="w-full bg-transparent text-sm text-white/85 placeholder:text-white/25 outline-none"
+                />
+              </label>
+
+              <div className="grid sm:grid-cols-2 gap-3">
+                {filteredCharacters.map(renderCharacterCard)}
+              </div>
+              {!filteredCharacters.length && (
+                <p className="text-sm text-white/35">
+                  {locale === 'zh' ? '还没有人物预设。新建人物后，可通过提示词和参考图 URL 固定人设。' : 'No character preset yet. Create one with prompt details and reference image URLs.'}
+                </p>
+              )}
             </div>
 
             <div className="rounded-[26px] border border-white/8 bg-black/15 p-4 space-y-4">
@@ -418,12 +563,49 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
               </div>
             </div>
 
+            <div className="rounded-[22px] border border-cyan-300/12 bg-cyan-300/6 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.28em] text-cyan-50/70">
+                  <Users className="w-4 h-4" />
+                  {locale === 'zh' ? '人物设定' : 'Character setup'}
+                </div>
+                <div className="text-xs text-white/42">
+                  {selectedCharacters.length}/3 {locale === 'zh' ? '已选人物' : 'selected'}
+                </div>
+              </div>
+              {selectedCharacters.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    {selectedCharacters.map((character) => (
+                      <button
+                        key={character.id}
+                        onClick={() => toggleCharacter(character.id)}
+                        className="rounded-full border border-cyan-300/20 bg-cyan-300/12 px-3 py-1.5 text-xs text-cyan-50"
+                      >
+                        {character.name}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-xs leading-6 text-white/55 whitespace-pre-wrap">{characterPromptPreview}</div>
+                  <div className="text-[11px] text-white/40">
+                    {locale === 'zh'
+                      ? `本次会额外附带 ${characterReferenceCount} 张人物参考图，并明确要求模型同时渲染这些已选人物。`
+                      : `${characterReferenceCount} character reference images will be attached, and the model will be asked to render all selected characters together.`}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-white/38">
+                  {locale === 'zh' ? '可多选最多 3 个人物。生图时会把人物长相、风格和参考图一并带入。' : 'Select up to 3 characters. Their appearance, style, and reference images will be merged into image generation.'}
+                </p>
+              )}
+            </div>
+
             <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
               <div className="text-[11px] uppercase tracking-[0.28em] text-white/40 mb-2">{t(locale, 'customPrompt')}</div>
               <textarea
                 value={promptBuilder.customSuffix}
                 onChange={(e) => dispatch({ type: 'SET_PROMPT_BUILDER', payload: { customSuffix: e.target.value } })}
-                placeholder={locale === 'zh' ? '补充主体、色彩、镜头语言、服装、场景细节…' : 'Add subject, color palette, camera angle, wardrobe, scene details...'}
+                placeholder={locale === 'zh' ? '补充主体、色彩、镜头语言、服装、场景细节...' : 'Add subject, color palette, camera angle, wardrobe, scene details...'}
                 className="w-full min-h-28 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/85 placeholder:text-white/25 outline-none focus:border-fuchsia-300/30"
               />
             </div>
@@ -445,11 +627,59 @@ export function PromptStore({ onApplyPrompt, onClose }: { onApplyPrompt: (prompt
               </div>
             )}
 
+            {isCharacterEditorOpen && (
+              <div className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[11px] uppercase tracking-[0.28em] text-white/40">
+                    {characterForm.id ? (locale === 'zh' ? '编辑人物' : 'Edit character') : (locale === 'zh' ? '新增人物' : 'New character')}
+                  </div>
+                  <button onClick={closeCharacterEditor} className="rounded-full border border-white/10 bg-white/6 p-2 text-white/50 hover:text-white">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <input value={characterForm.name} onChange={(e) => handleCharacterFormChange('name', e.target.value)} placeholder={locale === 'zh' ? '人物名称' : 'Character name'} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
+                  <input value={characterForm.title} onChange={(e) => handleCharacterFormChange('title', e.target.value)} placeholder={locale === 'zh' ? '人物身份 / 标签' : 'Role / title'} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <textarea value={characterForm.descriptionZh} onChange={(e) => handleCharacterFormChange('descriptionZh', e.target.value)} placeholder={locale === 'zh' ? '中文简介' : 'Chinese summary'} className="min-h-24 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
+                  <textarea value={characterForm.descriptionEn} onChange={(e) => handleCharacterFormChange('descriptionEn', e.target.value)} placeholder={locale === 'zh' ? '英文简介' : 'English summary'} className="min-h-24 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <textarea value={characterForm.visualPromptZh} onChange={(e) => handleCharacterFormChange('visualPromptZh', e.target.value)} placeholder={locale === 'zh' ? '中文人物外观提示词' : 'Chinese appearance prompt'} className="min-h-28 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
+                  <textarea value={characterForm.visualPromptEn} onChange={(e) => handleCharacterFormChange('visualPromptEn', e.target.value)} placeholder={locale === 'zh' ? '英文人物外观提示词' : 'English appearance prompt'} className="min-h-28 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <textarea value={characterForm.stylePromptZh} onChange={(e) => handleCharacterFormChange('stylePromptZh', e.target.value)} placeholder={locale === 'zh' ? '中文风格提示词（可选）' : 'Chinese style prompt (optional)'} className="min-h-24 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
+                  <textarea value={characterForm.stylePromptEn} onChange={(e) => handleCharacterFormChange('stylePromptEn', e.target.value)} placeholder={locale === 'zh' ? '英文风格提示词（可选）' : 'English style prompt (optional)'} className="min-h-24 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
+                </div>
+                <input value={characterForm.coverImageUrl} onChange={(e) => handleCharacterFormChange('coverImageUrl', e.target.value)} placeholder={locale === 'zh' ? '封面图 URL（可选）' : 'Cover image URL (optional)'} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
+                <textarea value={characterForm.referenceImageUrlsText} onChange={(e) => handleCharacterFormChange('referenceImageUrlsText', e.target.value)} placeholder={locale === 'zh' ? '参考图 URL，每行一条，最多 4 条' : 'Reference image URLs, one per line, up to 4'} className="min-h-28 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
+                <input value={characterForm.tagsText} onChange={(e) => handleCharacterFormChange('tagsText', e.target.value)} placeholder={locale === 'zh' ? '标签，逗号分隔（可选）' : 'Tags, comma separated (optional)'} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none" />
+                <div className="flex gap-3 flex-wrap">
+                  <button onClick={saveCharacter} disabled={!characterForm.name.trim() || !characterForm.visualPromptZh.trim() || !characterForm.visualPromptEn.trim()} className="rounded-2xl bg-cyan-200 px-4 py-3 text-sm font-semibold text-black disabled:opacity-40">
+                    {characterForm.id ? (locale === 'zh' ? '保存人物' : 'Save character') : (locale === 'zh' ? '创建人物' : 'Create character')}
+                  </button>
+                  <button onClick={resetCharacterForm} className="rounded-2xl border border-white/10 px-4 py-3 text-sm text-white/70 hover:bg-white/6">
+                    {locale === 'zh' ? '清空表单' : 'Clear form'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="rounded-2xl bg-black/25 border border-white/8 p-4 space-y-3">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.28em] text-white/40 mb-2">{t(locale, 'suggestedPrompt')}</div>
                 <p className="text-sm text-white/80 leading-6 whitespace-pre-wrap break-words">{composedPrompt || '—'}</p>
               </div>
+              {selectedCharacters.length > 0 && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.28em] text-white/40 mb-2">
+                    {locale === 'zh' ? '人物提示预览' : 'Character prompt preview'}
+                  </div>
+                  <p className="text-xs text-white/55 leading-6 whitespace-pre-wrap break-words">{characterPromptPreview}</p>
+                </div>
+              )}
               {selectedPreset?.recommendedNegativePrompt && (
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.28em] text-white/40 mb-2">{t(locale, 'recommendedNegativePrompt')}</div>

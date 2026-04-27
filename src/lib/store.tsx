@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import { AppState, AIModelSettings, ImageAsset, InputMode, Locale, Message, PromptBuilderState, Workspace } from '../types';
+import { AppState, AIModelSettings, CharacterProfile, ImageAsset, InputMode, Locale, Message, PromptBuilderState, Workspace } from '../types';
 import { runtimeConfig } from './config';
 
 const DEFAULT_WORKSPACE_ID = 'workspace_default';
@@ -21,6 +21,8 @@ type Action =
   | { type: 'MARK_ERROR'; payload: string }
   | { type: 'ADD_ASSET'; payload: ImageAsset }
   | { type: 'REMOVE_ASSET'; payload: string }
+  | { type: 'UPSERT_CHARACTER'; payload: CharacterProfile }
+  | { type: 'REMOVE_CHARACTER'; payload: string }
   | { type: 'SET_QUOTED_MESSAGE'; payload: string | null }
   | { type: 'SET_INPUT_MODE'; payload: InputMode }
   | { type: 'SET_LOCALE'; payload: Locale }
@@ -28,9 +30,12 @@ type Action =
   | { type: 'RESET_PROMPT_BUILDER' }
   | { type: 'TOGGLE_FAVORITE_PRESET'; payload: string }
   | { type: 'TOGGLE_FAVORITE_TAG'; payload: string }
+  | { type: 'TOGGLE_FAVORITE_CHARACTER'; payload: string }
   | { type: 'MARK_RECENT_PRESET'; payload: string }
   | { type: 'MARK_RECENT_TAG'; payload: string }
+  | { type: 'MARK_RECENT_CHARACTER'; payload: string }
   | { type: 'TOGGLE_CARRY_FORWARD_ASSET'; payload: string }
+  | { type: 'TOGGLE_CHARACTER_SELECTION'; payload: string }
   | { type: 'UPDATE_ASSET_REFERENCE'; payload: { id: string; pinned?: boolean; referenceStrength?: 'subtle' | 'balanced' | 'strong' } }
   | { type: 'SET_RUNTIME_CONFIG'; payload: AppState['runtimeConfig'] }
   | { type: 'SET_MOBILE_SIDEBAR_OPEN'; payload: boolean }
@@ -56,15 +61,19 @@ const defaultSettings: AIModelSettings = {
 const defaultPromptBuilder: PromptBuilderState = {
   selectedPresetId: null,
   selectedTagIds: [],
+  selectedCharacterIds: [],
   customSuffix: '',
   presetSearch: '',
   tagSearch: '',
+  characterSearch: '',
   activePresetCategory: 'all',
   activeTagGroup: 'all',
   favoritePresetIds: [],
   favoriteTagIds: [],
+  favoriteCharacterIds: [],
   recentPresetIds: [],
   recentTagIds: [],
+  recentCharacterIds: [],
   isPromptStoreOpen: false,
   carryForwardAssetIds: [],
 };
@@ -117,6 +126,16 @@ function migratePersistedState(payload: Partial<AppState>): Partial<AppState> {
     ]),
   );
 
+  const migratedCharacters = Object.fromEntries(
+    Object.entries(payload.characters ?? {}).map(([characterId, character]) => [
+      characterId,
+      {
+        ...character,
+        referenceImageUrls: Array.isArray(character.referenceImageUrls) ? character.referenceImageUrls.filter(Boolean) : [],
+      },
+    ]),
+  );
+
   return {
     ...payload,
     settings: {
@@ -128,6 +147,7 @@ function migratePersistedState(payload: Partial<AppState>): Partial<AppState> {
     },
     messages: migratedMessages,
     assets: migratedAssets,
+    characters: migratedCharacters,
     workspaces: savedWorkspaces,
     activeWorkspaceId: fallbackWorkspaceId,
   };
@@ -137,6 +157,7 @@ const initialState: AppState = {
   settings: defaultSettings,
   messages: [],
   assets: {},
+  characters: {},
   workspaces: [createDefaultWorkspace()],
   activeWorkspaceId: DEFAULT_WORKSPACE_ID,
   quotedMessageId: null,
@@ -178,6 +199,11 @@ function reducer(state: AppState, action: Action): AppState {
         assets: { ...state.assets, [action.payload.id]: action.payload },
         workspaces: touchWorkspace(state.workspaces, action.payload.workspaceId),
       };
+    case 'UPSERT_CHARACTER':
+      return {
+        ...state,
+        characters: { ...state.characters, [action.payload.id]: action.payload },
+      };
     case 'REMOVE_ASSET': {
       const nextAssets = { ...state.assets };
       delete nextAssets[action.payload];
@@ -195,6 +221,20 @@ function reducer(state: AppState, action: Action): AppState {
         lightboxAssetId: state.lightboxAssetId === action.payload ? null : state.lightboxAssetId,
       };
     }
+    case 'REMOVE_CHARACTER': {
+      const nextCharacters = { ...state.characters };
+      delete nextCharacters[action.payload];
+      return {
+        ...state,
+        characters: nextCharacters,
+        promptBuilder: {
+          ...state.promptBuilder,
+          selectedCharacterIds: state.promptBuilder.selectedCharacterIds.filter((id) => id !== action.payload),
+          favoriteCharacterIds: state.promptBuilder.favoriteCharacterIds.filter((id) => id !== action.payload),
+          recentCharacterIds: state.promptBuilder.recentCharacterIds.filter((id) => id !== action.payload),
+        },
+      };
+    }
     case 'SET_QUOTED_MESSAGE':
       return { ...state, quotedMessageId: action.payload };
     case 'SET_INPUT_MODE':
@@ -210,8 +250,10 @@ function reducer(state: AppState, action: Action): AppState {
           ...defaultPromptBuilder,
           favoritePresetIds: state.promptBuilder.favoritePresetIds,
           favoriteTagIds: state.promptBuilder.favoriteTagIds,
+          favoriteCharacterIds: state.promptBuilder.favoriteCharacterIds,
           recentPresetIds: state.promptBuilder.recentPresetIds,
           recentTagIds: state.promptBuilder.recentTagIds,
+          recentCharacterIds: state.promptBuilder.recentCharacterIds,
           isPromptStoreOpen: state.promptBuilder.isPromptStoreOpen,
           carryForwardAssetIds: state.promptBuilder.carryForwardAssetIds,
         },
@@ -240,6 +282,18 @@ function reducer(state: AppState, action: Action): AppState {
         },
       };
     }
+    case 'TOGGLE_FAVORITE_CHARACTER': {
+      const exists = state.promptBuilder.favoriteCharacterIds.includes(action.payload);
+      return {
+        ...state,
+        promptBuilder: {
+          ...state.promptBuilder,
+          favoriteCharacterIds: exists
+            ? state.promptBuilder.favoriteCharacterIds.filter((id) => id !== action.payload)
+            : [action.payload, ...state.promptBuilder.favoriteCharacterIds],
+        },
+      };
+    }
     case 'MARK_RECENT_PRESET':
       return {
         ...state,
@@ -256,6 +310,28 @@ function reducer(state: AppState, action: Action): AppState {
           recentTagIds: pushRecent(state.promptBuilder.recentTagIds, action.payload),
         },
       };
+    case 'MARK_RECENT_CHARACTER':
+      return {
+        ...state,
+        promptBuilder: {
+          ...state.promptBuilder,
+          recentCharacterIds: pushRecent(state.promptBuilder.recentCharacterIds, action.payload),
+        },
+      };
+    case 'TOGGLE_CHARACTER_SELECTION': {
+      const exists = state.promptBuilder.selectedCharacterIds.includes(action.payload);
+      const nextSelectedCharacterIds = exists
+        ? state.promptBuilder.selectedCharacterIds.filter((id) => id !== action.payload)
+        : [...state.promptBuilder.selectedCharacterIds, action.payload].slice(0, 3);
+      return {
+        ...state,
+        promptBuilder: {
+          ...state.promptBuilder,
+          selectedCharacterIds: nextSelectedCharacterIds,
+          recentCharacterIds: exists ? state.promptBuilder.recentCharacterIds : pushRecent(state.promptBuilder.recentCharacterIds, action.payload),
+        },
+      };
+    }
     case 'TOGGLE_CARRY_FORWARD_ASSET': {
       const exists = state.promptBuilder.carryForwardAssetIds.includes(action.payload);
       return {
@@ -353,6 +429,9 @@ function reducer(state: AppState, action: Action): AppState {
         ...(action.payload.promptBuilder ?? {}),
         isPromptStoreOpen: false,
         carryForwardAssetIds: (action.payload.promptBuilder?.carryForwardAssetIds ?? []).filter((id) => Boolean((action.payload.assets ?? state.assets)?.[id])),
+        selectedCharacterIds: (action.payload.promptBuilder?.selectedCharacterIds ?? []).filter((id) => Boolean((action.payload.characters ?? state.characters)?.[id])),
+        favoriteCharacterIds: (action.payload.promptBuilder?.favoriteCharacterIds ?? []).filter((id) => Boolean((action.payload.characters ?? state.characters)?.[id])),
+        recentCharacterIds: (action.payload.promptBuilder?.recentCharacterIds ?? []).filter((id) => Boolean((action.payload.characters ?? state.characters)?.[id])),
       };
       const savedWorkspaces = action.payload.workspaces?.length ? action.payload.workspaces : [createDefaultWorkspace()];
       const activeWorkspaceId =
@@ -365,6 +444,7 @@ function reducer(state: AppState, action: Action): AppState {
         settings: mergedSettings,
         promptBuilder: mergedPromptBuilder,
         runtimeConfig,
+        characters: action.payload.characters ?? {},
         workspaces: savedWorkspaces,
         activeWorkspaceId,
         isMobileSidebarOpen: false,
@@ -441,6 +521,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           locale: state.locale,
           messages: persistedMessages,
           assets: persistedAssets,
+          characters: state.characters,
           workspaces: state.workspaces,
           activeWorkspaceId: state.activeWorkspaceId,
           promptBuilder: {
@@ -452,7 +533,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error('Failed to save state', e);
     }
-  }, [state.settings, state.locale, state.messages, state.assets, state.workspaces, state.activeWorkspaceId, state.promptBuilder]);
+  }, [state.settings, state.locale, state.messages, state.assets, state.characters, state.workspaces, state.activeWorkspaceId, state.promptBuilder]);
 
   return <AppStateContext.Provider value={{ state, dispatch }}>{children}</AppStateContext.Provider>;
 }

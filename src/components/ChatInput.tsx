@@ -36,6 +36,7 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
 
   const allAssetIds = Object.keys(state.assets).filter((id) => state.assets[id]?.workspaceId === state.activeWorkspaceId);
   const carryForwardAssets = state.promptBuilder.carryForwardAssetIds.filter((id) => allAssetIds.includes(id));
+  const selectedCharacters = state.promptBuilder.selectedCharacterIds.map((id) => state.characters[id]).filter(Boolean);
   const referencedAssets = useMemo(
     () => Array.from(new Set([...carryForwardAssets, ...allAssetIds.filter((id) => text.includes(`@${id}`))])),
     [allAssetIds, carryForwardAssets, text],
@@ -277,6 +278,41 @@ export function ChatInput({ onSubmit }: { onSubmit: (text: string, referencedAss
             <button onClick={() => dispatch({ type: 'SET_QUOTED_MESSAGE', payload: null })} className="text-white/45 hover:text-white ml-3">
               <X className="w-4 h-4" />
             </button>
+          </div>
+        )}
+
+        {state.inputMode === 'image' && selectedCharacters.length > 0 && (
+          <div className="mb-3 rounded-[22px] border border-cyan-300/12 bg-cyan-300/8 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-50/70">
+                {locale === 'zh' ? `已选人物 ${selectedCharacters.length}/3` : `Selected characters ${selectedCharacters.length}/3`}
+              </div>
+              <button
+                type="button"
+                onClick={togglePromptStore}
+                className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-[11px] text-cyan-50 hover:bg-cyan-300/16"
+              >
+                {locale === 'zh' ? '管理人物' : 'Manage characters'}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {selectedCharacters.map((character) => (
+                <div
+                  key={character.id}
+                  className="inline-flex items-center gap-2 rounded-full border border-cyan-300/18 bg-black/20 px-3 py-2 text-xs text-cyan-50"
+                >
+                  <span className="max-w-[10rem] truncate">{character.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => dispatch({ type: 'TOGGLE_CHARACTER_SELECTION', payload: character.id })}
+                    className="rounded-full bg-white/10 p-1 text-white/70 hover:bg-white/20 hover:text-white"
+                    aria-label={locale === 'zh' ? `移除人物 ${character.name}` : `Remove character ${character.name}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
