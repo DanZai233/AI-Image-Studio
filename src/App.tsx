@@ -24,6 +24,7 @@ import { fetchImageGeneration, fetchChatCompletionStream } from './lib/openai';
 import { t, tf } from './lib/i18n';
 import { promptPresets, tagDefinitions } from './lib/promptLibrary';
 import { ContextSnapshot } from './types';
+import { useAssetActions } from './lib/useAssetActions';
 
 const IMAGE_CONTEXT_MESSAGE_LIMIT = 6;
 const IMAGE_CONTEXT_CHAR_LIMIT = 220;
@@ -37,6 +38,7 @@ function SidebarContent({
   onCloseMobile?: () => void;
 }) {
   const { state, dispatch } = useAppStore();
+  const { removeAsset } = useAssetActions();
   const locale = state.locale;
   const activeWorkspace = state.workspaces.find((workspace) => workspace.id === state.activeWorkspaceId) || state.workspaces[0];
   const assetList = Object.values(state.assets)
@@ -171,15 +173,27 @@ function SidebarContent({
           </div>
           <div className="grid grid-cols-2 gap-3">
             {assetList.map((asset) => (
-              <button
+              <div
                 key={asset.id}
-                onClick={() => dispatch({ type: 'SET_LIGHTBOX_ASSET', payload: asset.id })}
                 className="group relative aspect-square overflow-hidden rounded-[22px] border border-white/10 bg-black/20 text-left"
               >
+                <button
+                  type="button"
+                  onClick={() => removeAsset(asset.id)}
+                  className="absolute right-3 top-3 z-10 rounded-full bg-black/55 p-2 text-white/80 backdrop-blur-md transition hover:bg-black/75 hover:text-white"
+                  aria-label={locale === 'zh' ? '删除参考图' : 'Delete reference image'}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => dispatch({ type: 'SET_LIGHTBOX_ASSET', payload: asset.id })}
+                  className="h-full w-full"
+                >
                 <img src={asset.url} alt={asset.id} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-70" />
                 <div className="absolute inset-x-0 bottom-0 p-3 text-[11px] text-white/70 font-mono truncate">@{asset.id}</div>
-              </button>
+                </button>
+              </div>
             ))}
             {assetList.length === 0 && <div className="col-span-2 text-sm text-white/35 italic leading-7">{t(locale, 'noImages')}</div>}
           </div>

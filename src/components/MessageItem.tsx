@@ -1,13 +1,15 @@
 import React from 'react';
-import { Reply, Download, Share2, ZoomIn, Pin, ArrowUpCircle } from 'lucide-react';
+import { Reply, Download, Share2, ZoomIn, Pin, ArrowUpCircle, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Message } from '../types';
 import { useAppStore } from '../lib/store';
 import ReactMarkdown from 'react-markdown';
 import { t } from '../lib/i18n';
+import { useAssetActions } from '../lib/useAssetActions';
 
 export function MessageItem({ message }: { message: Message }) {
   const { state, dispatch } = useAppStore();
+  const { removeAsset } = useAssetActions();
   const isAI = message.role === 'assistant';
   const locale = state.locale;
 
@@ -42,6 +44,10 @@ export function MessageItem({ message }: { message: Message }) {
     }
   };
 
+  const handleDeleteAsset = (assetId: string) => {
+    removeAsset(assetId);
+  };
+
   return (
     <div className={cn('flex flex-col mb-8 animate-in fade-in slide-in-from-bottom-2', isAI ? 'items-start' : 'items-end')}>
       {quotedMessage && (
@@ -56,6 +62,13 @@ export function MessageItem({ message }: { message: Message }) {
           <div className="flex flex-wrap gap-3">
             {assets.map((asset) => (
               <div key={asset.id} className="relative group/asset rounded-[24px] overflow-hidden border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.3)] bg-black/50">
+                <button
+                  onClick={() => handleDeleteAsset(asset.id)}
+                  className="absolute right-3 top-3 z-10 rounded-full bg-black/55 p-2 text-white/80 backdrop-blur-md transition hover:bg-black/75 hover:text-white"
+                  aria-label={locale === 'zh' ? '删除参考图' : 'Delete reference image'}
+                >
+                  <X className="w-4 h-4" />
+                </button>
                 <button onClick={() => dispatch({ type: 'SET_LIGHTBOX_ASSET', payload: asset.id })} className="block">
                   <img
                     src={asset.url}

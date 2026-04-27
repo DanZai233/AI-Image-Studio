@@ -20,6 +20,7 @@ type Action =
   | { type: 'UPDATE_MESSAGE'; payload: { id: string; content: string } }
   | { type: 'MARK_ERROR'; payload: string }
   | { type: 'ADD_ASSET'; payload: ImageAsset }
+  | { type: 'REMOVE_ASSET'; payload: string }
   | { type: 'SET_QUOTED_MESSAGE'; payload: string | null }
   | { type: 'SET_INPUT_MODE'; payload: InputMode }
   | { type: 'SET_LOCALE'; payload: Locale }
@@ -99,7 +100,7 @@ function migratePersistedState(payload: Partial<AppState>): Partial<AppState> {
       ? payload.activeWorkspaceId
       : savedWorkspaces[0].id;
   const runtimeSharedEnabled = runtimeConfig.sharedProviderEnabled;
-  const persistedSettings = payload.settings ?? {};
+  const persistedSettings: Partial<AIModelSettings> = payload.settings ?? {};
 
   const migratedMessages = (payload.messages ?? []).map((message) => ({
     ...message,
@@ -119,6 +120,7 @@ function migratePersistedState(payload: Partial<AppState>): Partial<AppState> {
   return {
     ...payload,
     settings: {
+      ...defaultSettings,
       ...persistedSettings,
       useSharedProvider: runtimeSharedEnabled ? Boolean(persistedSettings.useSharedProvider) : false,
       sharedPassword: '',
@@ -176,6 +178,23 @@ function reducer(state: AppState, action: Action): AppState {
         assets: { ...state.assets, [action.payload.id]: action.payload },
         workspaces: touchWorkspace(state.workspaces, action.payload.workspaceId),
       };
+    case 'REMOVE_ASSET': {
+      const nextAssets = { ...state.assets };
+      delete nextAssets[action.payload];
+      return {
+        ...state,
+        assets: nextAssets,
+        messages: state.messages.map((message) => ({
+          ...message,
+          imageAssets: (message.imageAssets || []).filter((assetId) => assetId !== action.payload),
+        })),
+        promptBuilder: {
+          ...state.promptBuilder,
+          carryForwardAssetIds: state.promptBuilder.carryForwardAssetIds.filter((assetId) => assetId !== action.payload),
+        },
+        lightboxAssetId: state.lightboxAssetId === action.payload ? null : state.lightboxAssetId,
+      };
+    }
     case 'SET_QUOTED_MESSAGE':
       return { ...state, quotedMessageId: action.payload };
     case 'SET_INPUT_MODE':
