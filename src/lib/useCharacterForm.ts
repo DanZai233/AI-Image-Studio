@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CharacterProfile } from '../types';
 import { useAppStore } from './store';
-import { generateId } from './utils';
+import { fileToBase64, generateId } from './utils';
 
 export type CharacterFormState = {
   id: string | null;
@@ -75,6 +75,30 @@ export function useCharacterForm() {
     setForm(createEmptyCharacterForm());
   };
 
+  const uploadCoverFile = async (file: File) => {
+    const dataUrl = await fileToBase64(file);
+    setForm((prev) => ({ ...prev, coverImageUrl: dataUrl }));
+    return dataUrl;
+  };
+
+  const appendReferenceFiles = async (files: FileList | File[]) => {
+    const normalizedFiles = Array.from(files).slice(0, 4);
+    const dataUrls = await Promise.all(normalizedFiles.map((file) => fileToBase64(file)));
+    setForm((prev) => {
+      const existing = prev.referenceImageUrlsText
+        .split(/\r?\n/)
+        .map((url) => url.trim())
+        .filter(Boolean);
+      const nextUrls = [...existing, ...dataUrls].slice(0, 4);
+      return {
+        ...prev,
+        referenceImageUrlsText: nextUrls.join('\n'),
+        coverImageUrl: prev.coverImageUrl || nextUrls[0] || '',
+      };
+    });
+    return dataUrls;
+  };
+
   const saveCharacter = () => {
     const name = form.name.trim();
     const visualPromptZh = form.visualPromptZh.trim();
@@ -133,6 +157,8 @@ export function useCharacterForm() {
     closeEditor,
     updateField,
     resetForm,
+    uploadCoverFile,
+    appendReferenceFiles,
     saveCharacter,
   };
 }
