@@ -47,8 +47,9 @@ const defaultSettings: AIModelSettings = {
   chatModel: 'gpt-4o-mini',
   imageModel: 'gpt-image-1',
   imageMode: 'auto',
-  useSharedProvider: runtimeConfig.sharedProviderEnabled,
+  useSharedProvider: false,
   sharedPassword: '',
+  sharedProviderUnlockedAt: undefined,
 };
 
 const defaultPromptBuilder: PromptBuilderState = {
@@ -97,6 +98,8 @@ function migratePersistedState(payload: Partial<AppState>): Partial<AppState> {
     payload.activeWorkspaceId && savedWorkspaces.some((workspace) => workspace.id === payload.activeWorkspaceId)
       ? payload.activeWorkspaceId
       : savedWorkspaces[0].id;
+  const runtimeSharedEnabled = runtimeConfig.sharedProviderEnabled;
+  const persistedSettings = payload.settings ?? {};
 
   const migratedMessages = (payload.messages ?? []).map((message) => ({
     ...message,
@@ -115,6 +118,12 @@ function migratePersistedState(payload: Partial<AppState>): Partial<AppState> {
 
   return {
     ...payload,
+    settings: {
+      ...persistedSettings,
+      useSharedProvider: runtimeSharedEnabled ? Boolean(persistedSettings.useSharedProvider) : false,
+      sharedPassword: '',
+      sharedProviderUnlockedAt: runtimeSharedEnabled && persistedSettings.useSharedProvider ? persistedSettings.sharedProviderUnlockedAt || Date.now() : undefined,
+    },
     messages: migratedMessages,
     assets: migratedAssets,
     workspaces: savedWorkspaces,
@@ -312,7 +321,14 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SET_LIGHTBOX_ASSET':
       return { ...state, lightboxAssetId: action.payload };
     case 'LOAD_STATE': {
-      const mergedSettings = { ...defaultSettings, ...(action.payload.settings ?? {}) };
+      const mergedSettings = {
+        ...defaultSettings,
+        ...(action.payload.settings ?? {}),
+        useSharedProvider: runtimeConfig.sharedProviderEnabled
+          ? Boolean(action.payload.settings?.useSharedProvider)
+          : false,
+        sharedPassword: '',
+      };
       const mergedPromptBuilder = {
         ...defaultPromptBuilder,
         ...(action.payload.promptBuilder ?? {}),

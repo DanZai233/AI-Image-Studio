@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { X, ShieldCheck, KeyRound, Globe2, ImagePlus } from 'lucide-react';
+import { X, ShieldCheck, KeyRound, Globe2, ImagePlus, Sparkles } from 'lucide-react';
 import { useAppStore } from '../lib/store';
 import { t } from '../lib/i18n';
 import { unlockSharedProvider } from '../lib/openai';
@@ -16,6 +16,9 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
     () => (settings.useSharedProvider ? t(locale, 'sharedProviderBadge') : t(locale, 'personalProviderBadge')),
     [settings.useSharedProvider, locale],
   );
+  const isSharedUnlocked = Boolean(runtimeConfig.sharedProviderEnabled && settings.useSharedProvider && settings.sharedProviderUnlockedAt);
+  const sharedStatusTitle = isSharedUnlocked ? t(locale, 'sharedUnlockedTitle') : t(locale, 'sharedLockedTitle');
+  const sharedStatusDescription = isSharedUnlocked ? t(locale, 'sharedUnlockedDesc') : t(locale, 'sharedLockedDesc');
 
   if (!isOpen) return null;
 
@@ -32,7 +35,13 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
     setUnlockStatus('');
     try {
       await unlockSharedProvider(settings.sharedPassword);
-      dispatch({ type: 'SET_SETTINGS', payload: { useSharedProvider: true } });
+      dispatch({
+        type: 'SET_SETTINGS',
+        payload: {
+          useSharedProvider: true,
+          sharedProviderUnlockedAt: Date.now(),
+        },
+      });
       setUnlockStatus(t(locale, 'unlockSuccess'));
     } catch (error: any) {
       setUnlockError(error.message || t(locale, 'invalidPassword'));
@@ -64,6 +73,23 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                   <div className="text-xs text-white/45 mt-1">{modeLabel}</div>
                 </div>
               </div>
+              <div className={`mb-4 rounded-2xl border px-4 py-4 ${isSharedUnlocked ? 'border-emerald-300/20 bg-emerald-400/10' : 'border-white/8 bg-black/20'}`}>
+                <div className="flex items-start gap-3">
+                  <div className={`rounded-2xl p-2.5 ${isSharedUnlocked ? 'bg-emerald-300/12 text-emerald-200' : 'bg-white/6 text-white/65'}`}>
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] uppercase tracking-[0.24em] text-white/38">{t(locale, 'activeModeLabel')}</span>
+                      <span className={`rounded-full px-2.5 py-1 text-[11px] ${isSharedUnlocked ? 'bg-emerald-300/16 text-emerald-100' : 'bg-white/8 text-white/60'}`}>
+                        {modeLabel}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-sm text-white">{sharedStatusTitle}</div>
+                    <p className="mt-1 text-xs leading-6 text-white/55">{sharedStatusDescription}</p>
+                  </div>
+                </div>
+              </div>
               <p className="text-sm text-white/60 leading-6">{sharedDescription}</p>
 
               {runtimeConfig.sharedProviderEnabled && (
@@ -85,7 +111,7 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                       {t(locale, 'unlockShared')}
                     </button>
                   </div>
-                  <p className="text-xs text-white/40 leading-5">{t(locale, 'unlockHint')}</p>
+                  <p className="text-xs text-white/40 leading-5">{isSharedUnlocked ? t(locale, 'sharedUnlockedDesc') : sharedStatusDescription}</p>
                   {unlockStatus && <p className="text-xs text-emerald-300">{unlockStatus}</p>}
                   {unlockError && <p className="text-xs text-rose-300">{unlockError}</p>}
                 </div>
@@ -96,8 +122,16 @@ export function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
               <div className="text-[11px] uppercase tracking-[0.28em] text-white/40">{t(locale, 'providerMode')}</div>
               <div className="grid sm:grid-cols-2 gap-3">
                 <button
-                  onClick={() => dispatch({ type: 'SET_SETTINGS', payload: { useSharedProvider: true } })}
-                  disabled={!runtimeConfig.sharedProviderEnabled}
+                  onClick={() =>
+                    dispatch({
+                      type: 'SET_SETTINGS',
+                      payload: {
+                        useSharedProvider: true,
+                        sharedProviderUnlockedAt: settings.sharedProviderUnlockedAt ?? Date.now(),
+                      },
+                    })
+                  }
+                  disabled={!runtimeConfig.sharedProviderEnabled || !isSharedUnlocked}
                   className={`rounded-2xl border p-4 text-left ${settings.useSharedProvider ? 'border-fuchsia-300/30 bg-fuchsia-400/10' : 'border-white/8 bg-black/15'} disabled:opacity-40`}
                 >
                   <div className="text-sm text-white mb-1">{t(locale, 'sharedProvider')}</div>

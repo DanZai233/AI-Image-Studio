@@ -24,6 +24,7 @@ export interface AIModelSettings {
   imageMode: ImageModeStrategy;
   useSharedProvider: boolean;
   sharedPassword: string;
+  sharedProviderUnlockedAt?: number;
 }
 
 export interface RuntimeConfig {
