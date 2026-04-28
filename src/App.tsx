@@ -88,7 +88,7 @@ function SidebarContent({
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-11 h-11 rounded-[20px] bg-gradient-to-br from-fuchsia-300 via-amber-200 to-violet-500 flex items-center justify-center text-black shadow-[0_18px_50px_rgba(196,140,255,0.35)] shrink-0">
-              <Sparkles className="w-5 h-5" />
+              <img src="/logo.png" alt="Logo" className="w-full h-full object-contain rounded-[50%]" />
             </div>
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-[0.36em] text-white/35">LUMINA</div>
